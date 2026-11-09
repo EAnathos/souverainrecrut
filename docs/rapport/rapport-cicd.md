@@ -9,7 +9,7 @@ Projet fil rouge CI/CD – M2 Sup de Vinci Rennes. Périmètre : API Backend uni
 | 3.3 Analyse SonarQube | ✅ |
 | 3.4 Mise en place de Jenkins | ✅ |
 | 3.5 Automatisation de la chaîne CI | ✅ |
-| 3.6 Image Docker / Docker Hub | ⏳ |
+| 3.6 Image Docker / Docker Hub | ✅ |
 | 4. Provisionnement (Terraform, Ansible, GitLab) | ⏳ |
 | 5. Déploiement et validation | ⏳ |
 
@@ -159,8 +159,8 @@ docker compose up -d --build
 | 3 | Tests & couverture | `npm run test:coverage` | test en échec ou couverture < 80 % |
 | 4 | Analyse SonarQube & Quality Gate | `npx @sonar/scan -Dsonar.qualitygate.wait=true` | Quality Gate en échec |
 | 5 | Build TypeScript | `npm run build` | erreur de compilation |
-| 6 | Build image Docker | `docker build -t souverainrecrut-backend:<build>` | échec du build |
-| 7 | Scan Trivy | `aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed` | vulnérabilité HIGH ou CRITICAL corrigeable |
+| 6 | Build image Docker | `docker build -t souverainrecrut-backend:<version>-<commit>` | échec du build |
+| 7 | Scan Trivy | rapport complet, puis `--severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed` (voir 3.6) | vulnérabilité HIGH ou CRITICAL corrigeable |
 | 8 | Publication Docker Hub | `docker login` / `docker tag` / `docker push` | uniquement sur `Dev` ou `main` |
 
 **Rapports publiés dans Jenkins :** résultats JUnit (`backend/reports/junit.xml`), couverture HTML (`backend/coverage/index.html`), archive du build (`backend/dist/**`).
@@ -179,7 +179,7 @@ docker compose up -d --build
 
 L'image a aussi été durcie : passage de `node:20-alpine` à `node:22-alpine` (aligné sur `engines`), ajout d'un `.dockerignore` (`node_modules`, `coverage`, `tests` ne sont plus copiés), `npm ci --omit=dev`. Après corrections : **0 vulnérabilité HIGH/CRITICAL**, les 64 tests passent et l'API démarre (réponse HTTP 200).
 
-**Publication :** l'image est poussée sur Docker Hub sous `<DOCKERHUB_USERNAME>/souverainrecrut-backend` avec deux tags : le numéro du build (traçabilité) et `dev` (ou `latest` pour `main`). La connexion utilise le credential `dockerhub` et se termine par un `docker logout`.
+**Publication :** l'image est poussée sur Docker Hub sous `<DOCKERHUB_USERNAME>/souverainrecrut-backend`. La connexion utilise le credential `dockerhub` et se termine par un `docker logout`. Les builds #5 et #6 utilisaient le numéro de build comme tag ; il a été remplacé en 3.6 par un tag version + commit.
 
 **Résultat – build #5 (commit `0425e7f`) : SUCCESS en 10 min 28 s**
 
@@ -213,3 +213,80 @@ L'image a aussi été durcie : passage de `node:20-alpine` à `node:22-alpine` (
 ![Résultat du scan Trivy du build #6](trivy.png)
 
 *Sortie du stage Scan Trivy du build #6 : l'image `souverainrecrut-backend:6` (base Alpine 3.24.4) ne présente aucune vulnérabilité HIGH ou CRITICAL. Une seule vulnérabilité de ce niveau aurait fait échouer le stage et bloqué la publication.*
+
+## 3.6 Image Docker du Backend et publication sur Docker Hub
+
+**Périmètre :** seule l'image de l'API Backend est construite et publiée. Aucune image de base de données n'est produite : PostgreSQL reste un service externe, et son adresse n'est jamais dans l'image (elle est fournie au lancement par `DATABASE_URL`).
+
+### Vérification et adaptation du Dockerfile
+
+Le `backend/Dockerfile` fourni est multi-étapes (construction puis production). Audit et corrections :
+
+| Constat | Risque | Correction |
+|---|---|---|
+| Base `node:20-alpine`, alors que `package.json` exige Node ≥ 22 | Version d'exécution différente de celle testée | `node:22-alpine` |
+| Tag de base mobile (`node:22-alpine`) | Deux builds du même commit peuvent donner deux images différentes | Base **figée par digest** (`node:22-alpine@sha256:0e17…f8202`, Node 22.23.4, Alpine 3.24.4) |
+| Pas de `.dockerignore` : `COPY . .` envoyait `node_modules`, `coverage`, `tests`, et un éventuel `.env` | Image lourde, fuite possible de secrets | `.dockerignore` : `node_modules`, `dist`, `coverage`, `reports`, `tests`, `.scannerwork`, `.env`, `*.log` |
+| `npm ci --only=production` (option dépréciée) et npm présent dans l'image finale | npm inutile à l'exécution, 6 paquets vulnérables | `npm ci --omit=dev`, puis suppression de npm, npx et du cache |
+| Application lancée en `root` | Une faille de l'API donnerait les droits root dans le conteneur | `USER node` (utilisateur non privilégié de l'image Node) |
+| Le code écoute sur 4500 par défaut, l'image expose 4000 | Conteneur lancé sans `PORT` injoignable sur le port annoncé | `ENV PORT=4000` |
+| Aucun contrôle de santé | Docker ne sait pas si l'API répond | `HEALTHCHECK` sur `/v1/health` |
+| Aucune métadonnée | Impossible de savoir d'où vient une image | Labels OCI : `version`, `revision` (commit), `source`, `title` |
+
+Les fichiers `package-lock.json` et `npm ci` garantissent des dépendances identiques à chaque build. Vérification du contenu de l'image : aucun fichier `.env`, seulement `dist/`, `prisma/` (schéma et migrations) et les dépendances de production.
+
+### Construction et tags
+
+La version vient de `package.json` et l'identifiant de commit de Git ; ils sont aussi inscrits dans l'image (labels).
+
+```bash
+cd backend
+VERSION=$(node -p "require('./package.json').version")      # 1.0.0
+COMMIT=$(git rev-parse --short HEAD)                        # e6d91a9
+docker build --build-arg VERSION=$VERSION --build-arg VCS_REF=$(git rev-parse HEAD) \
+  -t VOTRE_COMPTE/souverainrecrut-backend:$VERSION-$COMMIT .
+docker image ls
+docker push VOTRE_COMPTE/souverainrecrut-backend:$VERSION-$COMMIT
+```
+
+| Tag | Exemple | Rôle | Branches |
+|---|---|---|---|
+| `<version>-<commit>` | `1.0.0-e6d91a9` | Immuable et traçable : désigne exactement un commit | `Dev` et `main` |
+| `dev` | `dev` | Dernière image validée de `Dev` | `Dev` |
+| `<version>` et `latest` | `1.0.0`, `latest` | Dernière version validée de production | `main` |
+
+Dans Jenkins, ces commandes sont exécutées par les stages *Build Image Docker* et *Publication Docker Hub*.
+
+### Seuils de vulnérabilités Trivy
+
+Trivy analyse l'image deux fois :
+1. **Rapport complet**, toutes sévérités, non bloquant, archivé dans Jenkins (`trivy-report.txt`) ;
+2. **Contrôle bloquant**, qui applique les seuils ci-dessous.
+
+| Sévérité | Seuil accepté | Effet |
+|---|---|---|
+| CRITICAL | 0 (si un correctif existe) | Build en échec, pas de publication |
+| HIGH | 0 (si un correctif existe) | Build en échec, pas de publication |
+| MEDIUM, LOW | Tolérées | Listées dans le rapport, à traiter lors des mises à jour |
+| Sans correctif disponible | Tolérées (`--ignore-unfixed`) | On ne peut pas les corriger ; elles restent visibles dans le rapport |
+
+Justification : HIGH et CRITICAL sont les vulnérabilités exploitables à distance ou à fort impact ; bloquer sur celles qui ont un correctif force la mise à jour sans rendre la pipeline impossible à faire passer quand aucun correctif n'existe encore.
+
+### Publication conditionnée
+
+Le stage *Publication Docker Hub* est le dernier de la pipeline : il n'est atteint que si les tests, le Quality Gate SonarCloud, le build et le contrôle Trivy ont réussi, et seulement sur `Dev` ou `main`. La connexion utilise un token d'accès Docker Hub (credential `dockerhub`), jamais le mot de passe du compte.
+
+### Résultat – build #9 (commit `e6d91a9`)
+
+Déclenché automatiquement (« Started by an SCM change »), **SUCCESS en 6 min 17 s**.
+
+| Contrôle | Résultat |
+|---|---|
+| Image construite | `souverainrecrut-backend:1.0.0-e6d91a9` |
+| Quality Gate SonarCloud | `PASSED` |
+| Trivy – contrôle bloquant | 0 HIGH, 0 CRITICAL |
+| Trivy – rapport complet | 3 MEDIUM, tolérées : `zlib` (Alpine), `glob` et `minimatch` (dépendances de swagger-jsdoc) |
+| Tags publiés | `1.0.0-e6d91a9` et `dev`, même digest `sha256:b434cc4e…1439c` |
+| Test du conteneur (en local, même Dockerfile) | état `healthy`, utilisateur `node`, `/v1/health` → HTTP 200 sur le port 4000 |
+
+📸 *Captures à joindre : tags `1.0.0-e6d91a9` et `dev` sur Docker Hub, `docker image ls`, artefact `trivy-report.txt` dans Jenkins.*
