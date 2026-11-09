@@ -14,6 +14,9 @@ import { errorMiddleware } from "./middlewares/error.middleware";
 
 const app = express();
 
+// Ne pas exposer la technologie utilisée (en-tête X-Powered-By)
+app.disable("x-powered-by");
+
 /**
  * ==========================================
  * Global Middlewares

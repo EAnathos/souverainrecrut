@@ -13,6 +13,12 @@ describe("Routes système", () => {
     expect(res.body.api).toBe("/v1");
   });
 
+  it("n'expose pas l'en-tête X-Powered-By", async () => {
+    const res = await request(app).get("/v1/health");
+
+    expect(res.headers["x-powered-by"]).toBeUndefined();
+  });
+
   it("GET /v1/health retourne UP", async () => {
     const res = await request(app).get("/v1/health");
 
