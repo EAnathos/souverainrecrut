@@ -20,6 +20,12 @@ credentials:
               id: "sonar-token"
               description: "Token SonarCloud"
               secret: "${SONAR_TOKEN:-a-renseigner}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "dockerhub"
+              description: "Docker Hub (token d'accès, pas le mot de passe du compte)"
+              username: "${DOCKERHUB_USERNAME:-a-renseigner}"
+              password: "${DOCKERHUB_TOKEN:-a-renseigner}"
 
 tool:
   nodejs:
@@ -45,12 +51,19 @@ unclassified:
 jobs:
   - script: >
       pipelineJob('souverainrecrut-backend') {
-        description('Pipeline backend : lit le Jenkinsfile de la branche Dev du dépôt local monté dans /home/projet')
+        description('Pipeline backend : Jenkinsfile de la branche Dev sur GitHub')
+        properties {
+          pipelineTriggers {
+            triggers {
+              pollSCM { scmpoll_spec('H/2 * * * *') }
+            }
+          }
+        }
         definition {
           cpsScm {
             scm {
               git {
-                remote { url('file:///home/projet') }
+                remote { url('https://github.com/EAnathos/souverainrecrut.git') }
                 branch('*/Dev')
               }
             }
