@@ -7,3 +7,6 @@ node_modules
 # Rapports de tests et de couverture
 coverage
 reports
+
+# Cache de l'analyse SonarQube
+.scannerwork
