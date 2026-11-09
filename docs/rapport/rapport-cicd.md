@@ -289,4 +289,15 @@ Déclenché automatiquement (« Started by an SCM change »), **SUCCESS en 6 min
 | Tags publiés | `1.0.0-e6d91a9` et `dev`, même digest `sha256:b434cc4e…1439c` |
 | Test du conteneur (en local, même Dockerfile) | état `healthy`, utilisateur `node`, `/v1/health` → HTTP 200 sur le port 4000 |
 
-📸 *Captures à joindre : tags `1.0.0-e6d91a9` et `dev` sur Docker Hub, `docker image ls`, artefact `trivy-report.txt` dans Jenkins.*
+**Rapport Trivy complet du build #9 :** [`trivy-report.txt`](trivy-report.txt) (artefact Jenkins, toutes sévérités).
+
+**Image construite par Jenkins (`docker image ls`) :**
+
+```
+REPOSITORY                TAG             IMAGE ID       SIZE
+souverainrecrut-backend   1.0.0-e6d91a9   b434cc4ef7d1   690MB
+```
+
+L'identifiant `b434cc4ef7d1` correspond au digest des tags `1.0.0-e6d91a9` et `dev` publiés sur Docker Hub : l'image publiée est bien celle qui a été scannée.
+
+📸 *Capture à joindre : tags `1.0.0-e6d91a9` et `dev` sur la page Docker Hub du dépôt.*
