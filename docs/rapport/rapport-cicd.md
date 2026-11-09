@@ -192,7 +192,7 @@ L'image a aussi été durcie : passage de `node:20-alpine` à `node:22-alpine` (
 
 ![Stage View Jenkins des builds #5 et #6](stageView.png)
 
-*Stage View du job `souverainrecrut-backend` : les 8 stages sont verts pour les builds #5 (lancé manuellement, « No Changes » car premier build sur le dépôt GitHub) et #6 (déclenché par le polling, « 1 commit »). Sur le #6, le build de l'image passe de 3 min 42 s à 1 s grâce au cache Docker.*
+*Stage View du job `souverainrecrut-backend` : les stages sont verts pour les builds #5 (lancé manuellement, « No Changes » car premier build sur le dépôt GitHub) et #6 (déclenché par le polling, « 1 commit »). Sur le #6, le build de l'image passe de 3 min 42 s à 1 s grâce au cache Docker.*
 
 ![Résultat du scan Trivy du build #6](trivy.png)
 
