@@ -1,0 +1,61 @@
+jenkins:
+  systemMessage: "SouverainRecrut - Jenkins local (dev), configuré par jenkins/casc/jenkins.yaml"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "sonar-token"
+              description: "Token SonarCloud"
+              secret: "${SONAR_TOKEN:-a-renseigner}"
+
+tool:
+  nodejs:
+    installations:
+      - name: "Node 22"
+        properties:
+          - installSource:
+              installers:
+                - nodeJSInstaller:
+                    id: "22.23.4"
+                    npmPackagesRefreshHours: 72
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: false
+    installations:
+      - name: "SonarCloud"
+        serverUrl: "https://sonarcloud.io"
+        credentialsId: "sonar-token"
+
+jobs:
+  - script: >
+      pipelineJob('souverainrecrut-backend') {
+        description('Pipeline backend : lit le Jenkinsfile de la branche Dev du dépôt local monté dans /home/projet')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('file:///home/projet') }
+                branch('*/Dev')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }
