@@ -52,6 +52,20 @@ npm run test:coverage    # tests + couverture
 
 **Résultat :** 64/64 tests OK, couverture 99,4 % des lignes. Un seuil de 80 % est imposé dans `vitest.config.ts` : en dessous, la commande échoue et bloque la pipeline.
 
+**Rapport JUnit :** [`junit.xml`](junit.xml) – 64 tests, 0 échec, 0 erreur, exécutés en 0,79 s. C'est ce fichier que Jenkins lit pour afficher le détail des tests de chaque build.
+
+| Fichier de tests | Tests | Échecs |
+|---|---|---|
+| `access-control.test.ts` | 11 | 0 |
+| `candidates.test.ts` | 9 | 0 |
+| `system.test.ts` | 9 | 0 |
+| `applications.test.ts` | 8 | 0 |
+| `jobs.test.ts` | 8 | 0 |
+| `users.test.ts` | 8 | 0 |
+| `unit.test.ts` | 6 | 0 |
+| `auth.test.ts` | 5 | 0 |
+| **Total** | **64** | **0** |
+
 ## 3.3 Analyse de la qualité avec SonarQube
 
 **Outil :** SonarQube Cloud (organisation `eanathos`, projet `EAnathos_souverainrecrut`).
@@ -82,7 +96,9 @@ SONAR_TOKEN=*** npx @sonar/scan
 
 **Bilan global :** 0 bug, 0 vulnérabilité, 0 code smell, 0 hotspot, 0 % de duplication, 98,6 % de couverture. Statut du Quality Gate : **PASSED**.
 
-📸 *Captures à joindre : tableau de bord SonarQube (Quality Gate PASSED), sortie de `npm run test:coverage`.*
+![Tableau de bord SonarCloud du projet](sonarcloud.png)
+
+*Tableau de bord SonarCloud du projet `EAnathos_souverainrecrut` : Quality Gate « Passed » (toutes les conditions respectées), 0 issue, 0 % de duplication et 98,6 % de couverture sur l'ensemble du code. Volet sécurité : note A, 0 problème de sécurité ouvert, et 1 problème corrigé sur les 30 derniers jours (l'en-tête `X-Powered-By`). La couverture SonarCloud (98,6 %) diffère légèrement de celle de Vitest (99,4 %) car les deux outils ne comptent pas exactement les mêmes lignes.*
 
 ## 3.4 Mise en place de Jenkins
 
