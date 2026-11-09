@@ -186,4 +186,14 @@ L'image a aussi été durcie : passage de `node:20-alpine` à `node:22-alpine` (
 | Build #4 en échec (`ECONNRESET`) | Coupure réseau pendant `npm ci` dans le build Docker | Relance ; erreur ponctuelle, sans lien avec la pipeline |
 | Polling sans effet après passage sur GitHub | Jenkins interroge le dépôt du dernier build (ancien dépôt local) | Un build manuel, puis le polling utilise GitHub |
 
-📸 *Captures à joindre : Stage View Jenkins du build #5, log « QUALITY GATE STATUS: PASSED », sortie Trivy (Total: 0), tags `5` et `dev` sur Docker Hub.*
+**Déclenchement automatique – build #6 (commit `9b7f459`) :** lancé par le polling sans intervention (cause « Started by an SCM change »), le commit apparaît dans les *Changes*. SUCCESS en 2 min 38 s : le cache Docker (couches réutilisées) et le cache Trivy réduisent fortement la durée.
+
+**Captures :**
+
+![Stage View Jenkins des builds #5 et #6](stageView.png)
+
+*Stage View du job `souverainrecrut-backend` : les 8 stages sont verts pour les builds #5 (lancé manuellement, « No Changes » car premier build sur le dépôt GitHub) et #6 (déclenché par le polling, « 1 commit »). Sur le #6, le build de l'image passe de 3 min 42 s à 1 s grâce au cache Docker.*
+
+![Résultat du scan Trivy du build #6](trivy.png)
+
+*Sortie du stage Scan Trivy du build #6 : l'image `souverainrecrut-backend:6` (base Alpine 3.24.4) ne présente aucune vulnérabilité HIGH ou CRITICAL. Une seule vulnérabilité de ce niveau aurait fait échouer le stage et bloqué la publication.*
