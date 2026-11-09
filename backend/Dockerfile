@@ -1,5 +1,9 @@
+# Image de base figée par digest (node 22.23.4, Alpine 3.24.4) : même base à chaque build.
+# Pour la mettre à jour : docker pull node:22-alpine puis reporter le nouveau digest ici.
+ARG NODE_IMAGE=node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
+
 # Étape 1 : Construction
-FROM node:22-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -8,9 +12,20 @@ RUN npx prisma generate
 RUN npm run build
 
 # Étape 2 : Production
-FROM node:22-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
+
+ARG VERSION=dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.title="souverainrecrut-backend" \
+      org.opencontainers.image.description="API REST SouverainRecrut" \
+      org.opencontainers.image.source="https://github.com/EAnathos/souverainrecrut" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 WORKDIR /app
-ENV NODE_ENV=production
+# Le code écoute sur 4500 par défaut : on aligne l'image sur le port exposé (4000)
+ENV NODE_ENV=production \
+    PORT=4000
 
 COPY package*.json ./
 # npm ne sert plus à l'exécution : on le retire pour réduire la surface d'attaque (scan Trivy)
@@ -23,5 +38,10 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
+# Utilisateur non privilégié fourni par l'image node
+USER node
+
 EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT}/v1/health || exit 1
 CMD ["node", "dist/server.js"]

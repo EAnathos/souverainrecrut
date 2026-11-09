@@ -86,25 +86,44 @@ pipeline {
         stage('Build Image Docker') {
             steps {
                 dir('backend') {
-                    sh 'docker build -t $IMAGE:$BUILD_NUMBER .'
+                    script {
+                        // Tag traçable : version applicative (package.json) + commit court
+                        env.APP_VERSION = sh(script: 'node -p "require(\'./package.json\').version"',
+                                             returnStdout: true).trim()
+                        env.IMAGE_TAG = "${env.APP_VERSION}-${env.GIT_COMMIT.take(7)}"
+                    }
+                    sh '''
+                        docker build \
+                          --build-arg VERSION=$APP_VERSION \
+                          --build-arg VCS_REF=$GIT_COMMIT \
+                          -t $IMAGE:$IMAGE_TAG \
+                          .
+                    '''
+                    echo "Image construite : ${env.IMAGE}:${env.IMAGE_TAG}"
                 }
             }
         }
 
         stage('Scan Trivy') {
             steps {
-                // Trivy tourne dans un conteneur frère et lit l'image via le socket Docker de l'hôte
+                // Trivy tourne dans un conteneur frère et lit l'image via le socket Docker de l'hôte.
+                // 1) rapport complet, toutes sévérités, non bloquant (archivé)
+                // 2) seuil bloquant : 0 HIGH / 0 CRITICAL ayant un correctif disponible
                 sh '''
-                    docker run --rm \
+                    TRIVY="docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
                       -v trivy-cache:/root/.cache/ \
-                      aquasec/trivy:0.58.1 image \
-                        --exit-code 1 \
-                        --severity HIGH,CRITICAL \
-                        --ignore-unfixed \
-                        --no-progress \
-                        $IMAGE:$BUILD_NUMBER
+                      aquasec/trivy:0.58.1 image --no-progress"
+
+                    $TRIVY --exit-code 0 --format table $IMAGE:$IMAGE_TAG > trivy-report.txt
+
+                    $TRIVY --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed $IMAGE:$IMAGE_TAG
                 '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+                }
             }
         }
 
@@ -118,18 +137,20 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub',
                                                   usernameVariable: 'DOCKERHUB_USER',
                                                   passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                    // Seule l'image Backend est publiée (aucune image de base de données)
                     sh '''
-                        case "$GIT_BRANCH" in
-                          *main) CHANNEL=latest ;;
-                          *)     CHANNEL=dev ;;
-                        esac
                         REPO="$DOCKERHUB_USER/$IMAGE"
+                        # <version>-<commit> : tag immuable et traçable ; dev / latest : canal mobile
+                        case "$GIT_BRANCH" in
+                          *main) TAGS="$IMAGE_TAG $APP_VERSION latest" ;;
+                          *)     TAGS="$IMAGE_TAG dev" ;;
+                        esac
 
                         echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
-                        docker tag $IMAGE:$BUILD_NUMBER $REPO:$BUILD_NUMBER
-                        docker tag $IMAGE:$BUILD_NUMBER $REPO:$CHANNEL
-                        docker push $REPO:$BUILD_NUMBER
-                        docker push $REPO:$CHANNEL
+                        for T in $TAGS; do
+                          docker tag $IMAGE:$IMAGE_TAG $REPO:$T
+                          docker push $REPO:$T
+                        done
                     '''
                 }
             }
