@@ -9,7 +9,8 @@ pipeline {
     environment {
         // Credential "Secret text" déclaré dans jenkins/casc/jenkins.yaml
         SONAR_TOKEN = credentials('sonar-token')
-        IMAGE       = 'souverainrecrut-backend'
+        IMAGE         = 'souverainrecrut-backend'
+        MIGRATE_IMAGE = 'souverainrecrut-backend-migrate'
     }
 
     options {
@@ -98,8 +99,16 @@ pipeline {
                           --build-arg VCS_REF=$GIT_COMMIT \
                           -t $IMAGE:$IMAGE_TAG \
                           .
+
+                        # Image de migrations Prisma : même commit, même tag (cache des étapes partagé)
+                        docker build \
+                          --target migrator \
+                          --build-arg VERSION=$APP_VERSION \
+                          --build-arg VCS_REF=$GIT_COMMIT \
+                          -t $MIGRATE_IMAGE:$IMAGE_TAG \
+                          .
                     '''
-                    echo "Image construite : ${env.IMAGE}:${env.IMAGE_TAG}"
+                    echo "Images construites : ${env.IMAGE}:${env.IMAGE_TAG} et ${env.MIGRATE_IMAGE}:${env.IMAGE_TAG}"
                 }
             }
         }
@@ -118,11 +127,15 @@ pipeline {
                     $TRIVY --exit-code 0 --format table $IMAGE:$IMAGE_TAG > trivy-report.txt
 
                     $TRIVY --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed $IMAGE:$IMAGE_TAG
+
+                    # Même politique pour l'image de migrations
+                    $TRIVY --exit-code 0 --format table $MIGRATE_IMAGE:$IMAGE_TAG > trivy-report-migrate.txt
+                    $TRIVY --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed $MIGRATE_IMAGE:$IMAGE_TAG
                 '''
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'trivy-report*.txt', allowEmptyArchive: true
                 }
             }
         }
@@ -137,9 +150,8 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub',
                                                   usernameVariable: 'DOCKERHUB_USER',
                                                   passwordVariable: 'DOCKERHUB_TOKEN')]) {
-                    // Seule l'image Backend est publiée (aucune image de base de données)
+                    // Images Backend (API + migrations) uniquement, aucune image de base de données
                     sh '''
-                        REPO="$DOCKERHUB_USER/$IMAGE"
                         # <version>-<commit> : tag immuable et traçable ; dev / latest : canal mobile
                         case "$GIT_BRANCH" in
                           *main) TAGS="$IMAGE_TAG $APP_VERSION latest" ;;
@@ -147,9 +159,11 @@ pipeline {
                         esac
 
                         echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
-                        for T in $TAGS; do
-                          docker tag $IMAGE:$IMAGE_TAG $REPO:$T
-                          docker push $REPO:$T
+                        for NAME in $IMAGE $MIGRATE_IMAGE; do
+                          for T in $TAGS; do
+                            docker tag $NAME:$IMAGE_TAG $DOCKERHUB_USER/$NAME:$T
+                            docker push $DOCKERHUB_USER/$NAME:$T
+                          done
                         done
                     '''
                 }

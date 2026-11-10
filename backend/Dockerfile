@@ -11,7 +11,35 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# Étape 2 : Production
+# Étape 2 : Migrations Prisma (image distincte, construite avec --target migrator)
+# Le CLI Prisma est une devDependency : il n'est pas embarqué dans l'image de l'API.
+# Cette image, publiée avec le même tag que l'API, applique "prisma migrate deploy" avant le démarrage.
+FROM ${NODE_IMAGE} AS migrator
+
+ARG VERSION=dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.title="souverainrecrut-backend-migrate" \
+      org.opencontainers.image.description="Migrations Prisma SouverainRecrut" \
+      org.opencontainers.image.source="https://github.com/EAnathos/souverainrecrut" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+# Dépendances de production + CLI Prisma à la version figée par package-lock.json, puis retrait de npm
+RUN npm ci --omit=dev \
+ && npm install --no-save --no-audit --no-fund \
+      "prisma@$(node -p "require('./package-lock.json').packages['node_modules/prisma'].version")" \
+ && npm cache clean --force \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+
+USER node
+CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+
+# Étape 3 : Production (cible par défaut, doit rester la dernière)
 FROM ${NODE_IMAGE} AS runner
 
 ARG VERSION=dev
