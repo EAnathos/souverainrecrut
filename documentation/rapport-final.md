@@ -1,32 +1,56 @@
-# Rapport CI/CD – SouverainRecrut Backend
+# Rapport final – Projet fil rouge CI/CD SouverainRecrut
 
-Projet fil rouge CI/CD – M2 Sup de Vinci Rennes. Périmètre : API Backend uniquement.
-
-| Partie | Statut |
+| | |
 |---|---|
-| 3.1 Préparation du dépôt | ✅ |
-| 3.2 Tests Backend | ✅ |
-| 3.3 Analyse SonarQube | ✅ |
-| 3.4 Mise en place de Jenkins | ✅ |
-| 3.5 Automatisation de la chaîne CI | ✅ |
-| 3.6 Image Docker / Docker Hub | ✅ |
-| 4.1 VM Ubuntu sous VMware | ✅ |
-| 4.2 Provisionnement Terraform | ✅ |
-| 4.3 Configuration Ansible | ✅ |
-| 4.4 Projet GitLab | ✅ |
-| 5.1 – 5.3 Déploiement Docker Compose et pipeline GitLab | ✅ |
-| 5.4 Vérification et rollback | ✅ testé (1.1.0 → 1.0.0) |
-| 6. Incidents rencontrés | 6 incidents documentés |
+| **Auteurs** | Evan Jeuland / Nathaël Martinelle |
+| **Formation** | Mastère Expert en développement et déploiement de solutions numériques sécurisées – M2, Sup de Vinci Rennes |
+| **Module** | CI/CD – RNCP 40166, blocs 4 et 5 |
+| **Périmètre** | API Backend SouverainRecrut (Node.js 22, Express, TypeScript, Prisma) et base PostgreSQL |
+| **Dépôts** | [GitHub `souverainrecrut`](https://github.com/EAnathos/souverainrecrut) (code, intégration continue) · [GitLab `souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement) (provisionnement, déploiement) |
 
-**Dépôts :**
-- Code et intégration continue : [`github.com/EAnathos/souverainrecrut`](https://github.com/EAnathos/souverainrecrut) (branche `Dev`)
-- Provisionnement et déploiement : [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement)
+---
 
-**Chaîne complète :**
+## 1. Objectif et résultat
+
+L'objectif était de construire une chaîne de livraison complète et reproductible : le code Backend est testé et analysé, une image Docker est construite, scannée et publiée sur Docker Hub, puis récupérée par un pipeline GitLab CI/CD pour être déployée sur un serveur Ubuntu préparé avec Terraform et Ansible.
+
+**Résultat :** la chaîne fonctionne de bout en bout. Une modification poussée sur `Dev` est testée, analysée, construite, scannée et publiée par Jenkins ; elle est ensuite déployée en production après approbation manuelle, vérifiée automatiquement, et peut être annulée par un rollback testé.
+
+| Indicateur | Valeur |
+|---|---|
+| Tests automatisés | 64 tests, 8 fichiers, 0 échec |
+| Couverture | 99,4 % des lignes (seuil bloquant : 80 %) |
+| Quality Gate SonarCloud | PASSED – 0 bug, 0 vulnérabilité, 0 code smell, 0 % de duplication |
+| Scan Trivy | 0 vulnérabilité HIGH ou CRITICAL corrigeable sur les deux images |
+| Versions déployées | `1.0.0-fcc937f`, `1.1.0-dbc9278` |
+| Rollback | testé : 1.1.0 → 1.0.0, données conservées |
+| Secrets dans les dépôts | aucun |
+
+### Livrables
+
+| Livrable demandé (§6) | Emplacement |
+|---|---|
+| Jenkinsfile | [`Jenkinsfile`](../Jenkinsfile) (racine du dépôt GitHub) |
+| Dockerfile | [`backend/Dockerfile`](../backend/Dockerfile) (cibles API et `migrator`) |
+| Configuration SonarQube | [`backend/sonar-project.properties`](../backend/sonar-project.properties) |
+| Configuration Jenkins | [`jenkins/`](../jenkins) (Configuration as Code) |
+| Rapports de tests et de couverture | [`junit.xml`](junit.xml), [`couverture/`](couverture/index.html) |
+| Résultats SonarQube et Trivy | [`captures/sonarcloud.png`](captures/sonarcloud.png), [`trivy-report.txt`](trivy-report.txt), [`captures/trivy.png`](captures/trivy.png) |
+| Terraform, Ansible, `deployment/`, `.gitlab-ci.yml` | dépôt GitLab [`souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement) |
+| `architecture.md` | [architecture.md](architecture.md) |
+| `procedure-deploiement.md` | [procedure-deploiement.md](procedure-deploiement.md) |
+| `procedure-rollback.md` | [procedure-rollback.md](procedure-rollback.md) |
+| Captures d'écran | [`captures/`](captures) |
+
+Le projet est réparti sur deux dépôts, conformément à l'architecture cible du cahier des charges : le code et l'intégration continue sur GitHub, le provisionnement et le déploiement sur GitLab. Les procédures sont présentes dans les deux.
+
+Ce rapport présente d'abord une synthèse (objectif, livrables et architecture, parties 1 et 2), puis le détail de la mise en œuvre dans l'ordre du cahier des charges (parties 3 à 5), les incidents rencontrés (partie 6) et enfin le bilan (parties 7 à 11).
+
+## 2. Architecture mise en œuvre
 
 ```
 GitHub (Dev) ─► Jenkins ─► tests ─► SonarCloud ─► build ─► Trivy ─► Docker Hub
-                                                                       │ (images API + migrations, même tag)
+                                                                       │ images API + migrations, même tag
 VMware (VM Ubuntu) ◄─ Terraform ◄─ Ansible                             │
         │                                                              ▼
         └── GitLab Runner ◄── GitLab CI : validate ─► deploy (approbation) ─► verify ─► rollback
@@ -34,28 +58,34 @@ VMware (VM Ubuntu) ◄─ Terraform ◄─ Ansible                             �
                  └─► Docker Compose : PostgreSQL ─► migrations Prisma ─► API
 ```
 
----|---|
-| 3.1 Préparation du dépôt | ✅ |
-| 3.2 Tests Backend | ✅ |
-| 3.3 Analyse SonarQube | ✅ |
-| 3.4 Mise en place de Jenkins | ✅ |
-| 3.5 Automatisation de la chaîne CI | ✅ |
-| 3.6 Image Docker / Docker Hub | ✅ |
-| 4.1 VM Ubuntu sous VMware | ⏳ |
-| 4.2 Provisionnement Terraform | 🟡 code validé, `apply` à faire sur la VM |
-| 4.3 Configuration Ansible | 🟡 code validé, exécution à faire sur la VM |
-| 4.4 Projet GitLab | 🟡 projet créé, pipeline à écrire |
-| 5. Déploiement et validation | ⏳ |
+| Outil | Rôle dans la chaîne |
+|---|---|
+| Git, GitHub | Versionnement du code, branche de travail `Dev` |
+| Jenkins | Orchestration de l'intégration continue ; configuré par code (JCasC), reproductible en une commande |
+| Vitest, supertest | Tests unitaires et d'intégration de l'API, couverture |
+| SonarCloud | Qualité du code, Quality Gate bloquant |
+| Docker | Image de l'API et image de migrations, multi-étapes, non root |
+| Trivy | Scan de vulnérabilités, seuil bloquant avant publication |
+| Docker Hub | Registre des images versionnées |
+| VMware Workstation | Hébergement de la VM de production |
+| Terraform | Clé de déploiement, inventaire Ansible, contrôle d'accès SSH |
+| Ansible | Configuration du serveur : disque, DNS, Docker, utilisateur de déploiement, pare-feu, runner |
+| GitLab CI/CD | Pipeline de déploiement avec approbation, vérification et rollback |
+| Docker Compose | Orchestration de PostgreSQL, des migrations et de l'API sur le serveur |
+
+Le détail des composants, des flux réseau et des mesures de sécurité est dans [architecture.md](architecture.md).
 
 ---
 
-## 3.1 Préparation du dépôt
+## 3. Intégration continue avec Jenkins
+
+### 3.1 Préparation du dépôt
 
 - Fork : `github.com/EAnathos/souverainrecrut`, branche de travail `Dev`.
 - Stratégie de branches : développement sur `Dev`, intégration dans `main` par Pull Request.
 - Vérification locale : `npm ci` puis `npx prisma generate` dans `backend/`.
 
-## 3.2 Tests Backend
+### 3.2 Tests Backend
 
 **Choix : Vitest + supertest.**
 - Vitest : support natif de TypeScript (pas de ts-jest), rapide, couverture v8 intégrée.
@@ -84,6 +114,8 @@ npm run test:coverage    # tests + couverture
 | Couverture HTML | `backend/coverage/index.html` | lecture humaine |
 | Résultats JUnit | `backend/reports/junit.xml` | Jenkins |
 
+**Rapport de couverture joint :** [`couverture/index.html`](couverture/index.html) (rapport HTML détaillé par fichier) et [`couverture/lcov.info`](couverture/lcov.info) (format lu par SonarQube). Résumé : 99,4 % des instructions et des lignes (332/334), 94,2 % des branches, 100 % des fonctions.
+
 **Résultat :** 64/64 tests OK, couverture 99,4 % des lignes. Un seuil de 80 % est imposé dans `vitest.config.ts` : en dessous, la commande échoue et bloque la pipeline.
 
 **Rapport JUnit :** [`junit.xml`](junit.xml) – 64 tests, 0 échec, 0 erreur, exécutés en 0,79 s. C'est ce fichier que Jenkins lit pour afficher le détail des tests de chaque build.
@@ -100,7 +132,7 @@ npm run test:coverage    # tests + couverture
 | `auth.test.ts` | 5 | 0 |
 | **Total** | **64** | **0** |
 
-## 3.3 Analyse de la qualité avec SonarQube
+### 3.3 Analyse de la qualité avec SonarQube
 
 **Outil :** SonarQube Cloud (organisation `eanathos`, projet `EAnathos_souverainrecrut`).
 
@@ -130,11 +162,11 @@ SONAR_TOKEN=*** npx @sonar/scan
 
 **Bilan global :** 0 bug, 0 vulnérabilité, 0 code smell, 0 hotspot, 0 % de duplication, 98,6 % de couverture. Statut du Quality Gate : **PASSED**.
 
-![Tableau de bord SonarCloud du projet](sonarcloud.png)
+![Tableau de bord SonarCloud du projet](captures/sonarcloud.png)
 
 *Tableau de bord SonarCloud du projet `EAnathos_souverainrecrut` : Quality Gate « Passed » (toutes les conditions respectées), 0 issue, 0 % de duplication et 98,6 % de couverture sur l'ensemble du code. Volet sécurité : note A, 0 problème de sécurité ouvert, et 1 problème corrigé sur les 30 derniers jours (l'en-tête `X-Powered-By`). La couverture SonarCloud (98,6 %) diffère légèrement de celle de Vitest (99,4 %) car les deux outils ne comptent pas exactement les mêmes lignes.*
 
-## 3.4 Mise en place de Jenkins
+### 3.4 Mise en place de Jenkins
 
 **Choix : Jenkins conteneurisé, configuré « as code » (plugin Configuration as Code, JCasC).**
 - Toute la configuration (compte admin, outils, serveur SonarCloud, credentials, job) est décrite dans des fichiers versionnés : Jenkins est reproductible avec une seule commande, sans clic dans l'interface.
@@ -182,7 +214,7 @@ docker compose up -d --build
 
 **Sécurité de l'instance :** base d'utilisateurs Jenkins, inscription désactivée, accès anonyme refusé (403), assistant d'installation désactivé.
 
-## 3.5 Automatisation de la chaîne CI
+### 3.5 Automatisation de la chaîne CI
 
 **Pipeline déclaratif :** `Jenkinsfile` à la racine du dépôt. Chaque étape bloque la suivante en cas d'échec : l'image n'est publiée que si tous les contrôles sont verts.
 
@@ -240,19 +272,19 @@ L'image a aussi été durcie : passage de `node:20-alpine` à `node:22-alpine` (
 
 **Captures :**
 
-![Stage View Jenkins des builds #5 et #6](stageView.png)
+![Stage View Jenkins des builds #5 et #6](captures/stageView.png)
 
 *Stage View du job `souverainrecrut-backend` : les stages sont verts pour les builds #5 (lancé manuellement, « No Changes » car premier build sur le dépôt GitHub) et #6 (déclenché par le polling, « 1 commit »). Sur le #6, le build de l'image passe de 3 min 42 s à 1 s grâce au cache Docker.*
 
-![Résultat du scan Trivy du build #6](trivy.png)
+![Résultat du scan Trivy du build #6](captures/trivy.png)
 
 *Sortie du stage Scan Trivy du build #6 : l'image `souverainrecrut-backend:6` (base Alpine 3.24.4) ne présente aucune vulnérabilité HIGH ou CRITICAL. Une seule vulnérabilité de ce niveau aurait fait échouer le stage et bloqué la publication.*
 
-## 3.6 Image Docker du Backend et publication sur Docker Hub
+### 3.6 Image Docker du Backend et publication sur Docker Hub
 
 **Périmètre :** seule l'image de l'API Backend est construite et publiée. Aucune image de base de données n'est produite : PostgreSQL reste un service externe, et son adresse n'est jamais dans l'image (elle est fournie au lancement par `DATABASE_URL`).
 
-### Vérification et adaptation du Dockerfile
+#### Vérification et adaptation du Dockerfile
 
 Le `backend/Dockerfile` fourni est multi-étapes (construction puis production). Audit et corrections :
 
@@ -269,7 +301,7 @@ Le `backend/Dockerfile` fourni est multi-étapes (construction puis production).
 
 Les fichiers `package-lock.json` et `npm ci` garantissent des dépendances identiques à chaque build. Vérification du contenu de l'image : aucun fichier `.env`, seulement `dist/`, `prisma/` (schéma et migrations) et les dépendances de production.
 
-### Construction et tags
+#### Construction et tags
 
 La version vient de `package.json` et l'identifiant de commit de Git ; ils sont aussi inscrits dans l'image (labels).
 
@@ -291,7 +323,7 @@ docker push VOTRE_COMPTE/souverainrecrut-backend:$VERSION-$COMMIT
 
 Dans Jenkins, ces commandes sont exécutées par les stages *Build Image Docker* et *Publication Docker Hub*.
 
-### Seuils de vulnérabilités Trivy
+#### Seuils de vulnérabilités Trivy
 
 Trivy analyse l'image deux fois :
 1. **Rapport complet**, toutes sévérités, non bloquant, archivé dans Jenkins (`trivy-report.txt`) ;
@@ -306,11 +338,11 @@ Trivy analyse l'image deux fois :
 
 Justification : HIGH et CRITICAL sont les vulnérabilités exploitables à distance ou à fort impact ; bloquer sur celles qui ont un correctif force la mise à jour sans rendre la pipeline impossible à faire passer quand aucun correctif n'existe encore.
 
-### Publication conditionnée
+#### Publication conditionnée
 
 Le stage *Publication Docker Hub* est le dernier de la pipeline : il n'est atteint que si les tests, le Quality Gate SonarCloud, le build et le contrôle Trivy ont réussi, et seulement sur `Dev` ou `main`. La connexion utilise un token d'accès Docker Hub (credential `dockerhub`), jamais le mot de passe du compte.
 
-### Résultat – build #9 (commit `e6d91a9`)
+#### Résultat – build #9 (commit `e6d91a9`)
 
 Déclenché automatiquement (« Started by an SCM change »), **SUCCESS en 6 min 17 s**.
 
@@ -334,9 +366,7 @@ souverainrecrut-backend   1.0.0-e6d91a9   b434cc4ef7d1   690MB
 
 L'identifiant `b434cc4ef7d1` correspond au digest des tags `1.0.0-e6d91a9` et `dev` publiés sur Docker Hub : l'image publiée est bien celle qui a été scannée.
 
-📸 *Capture à joindre : tags `1.0.0-e6d91a9` et `dev` sur la page Docker Hub du dépôt.*
-
-### Évolution : image de migrations Prisma
+#### Évolution : image de migrations Prisma
 
 Le CLI Prisma est une dépendance de développement et npm est retiré de l'image de l'API (3.6) : l'image ne peut donc pas appliquer les migrations au déploiement. Plutôt que de réintroduire ces outils dans l'image exposée, le `Dockerfile` contient une étape dédiée `migrator` :
 
@@ -347,7 +377,7 @@ Le CLI Prisma est une dépendance de développement et npm est retiré de l'imag
 
 Jenkins construit les deux images à partir du **même commit**, les scanne avec les **mêmes seuils Trivy**, et les publie avec le **même tag** : la migration appliquée correspond toujours exactement au code déployé.
 
-### Résultat – build du commit `fcc937f`
+#### Résultat – build du commit `fcc937f`
 
 ![Stage View Jenkins du build fcc937f](captures/01-jenkins-build-fcc937f.png)
 
@@ -355,7 +385,7 @@ Jenkins construit les deux images à partir du **même commit**, les scanne avec
 
 ---
 
-# 4. Provisionnement
+## 4. Provisionnement
 
 **Dépôt dédié :** [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement). Il ne contient que l'infrastructure et le déploiement : le code reste sur GitHub et **l'image n'est jamais reconstruite côté GitLab**.
 
@@ -379,7 +409,7 @@ souverainrecrut-deploiement/
 
 Aucune action manuelle n'est faite sur le serveur de production : tout y est installé par Ansible et tout y est déployé par GitLab CI.
 
-## 4.1 Préparation de l'environnement VMware
+### 4.1 Préparation de l'environnement VMware
 
 **Choix de départ :** un ESXi virtualisé dans VMware Workstation, pour pouvoir utiliser le provider Terraform vSphere. Ce choix a été abandonné (voir [incident n°1](#incident-1--virtualisation-imbriquée-impossible)) : la machine hôte ne permet pas la virtualisation imbriquée.
 
@@ -400,7 +430,7 @@ Le playbook Ansible accepte toute version d'Ubuntu ≥ 22.04 : la différence de
 
 **Snapshot :** un snapshot a été pris avant toute configuration. Il a ensuite dû être supprimé, car VMware refuse d'agrandir le disque d'une VM qui possède des snapshots. Il n'a pas été recréé : la VM est reconstructible à l'identique avec Terraform et Ansible, ce qui joue le même rôle.
 
-## 4.2 Provisionnement avec Terraform
+### 4.2 Provisionnement avec Terraform
 
 **Contrainte :** le provider vSphere exige ESXi/vCenter. Sous VMware Workstation, la VM est créée manuellement ; Terraform gère les ressources réellement disponibles.
 
@@ -425,7 +455,7 @@ terraform init && terraform validate && terraform plan && terraform apply
 
 **Sécurité :** l'état Terraform contient la clé privée : `*.tfstate`, `terraform.tfvars` et `.secrets/` sont exclus du dépôt. La clé privée n'en sort que vers la variable GitLab `SSH_PRIVATE_KEY`.
 
-## 4.3 Configuration du serveur avec Ansible
+### 4.3 Configuration du serveur avec Ansible
 
 **Structure :** `playbook.yml` + deux rôles. Les valeurs par défaut des rôles ont la priorité la plus basse : l'inventaire généré par Terraform les surcharge.
 
@@ -479,7 +509,7 @@ Le jeton n'est jamais écrit dans un fichier : il est passé en ligne de command
 
 **Validation :** `ansible-lint` profil `production` : 0 erreur, 0 avertissement.
 
-## 4.4 Préparation du projet GitLab
+### 4.4 Préparation du projet GitLab
 
 **Variables CI/CD** (*Settings > CI/CD > Variables*) :
 
@@ -501,9 +531,9 @@ Le jeton n'est jamais écrit dans un fichier : il est passé en ligne de command
 
 ---
 
-# 5. Déploiement applicatif et validation
+## 5. Déploiement applicatif et validation
 
-## 5.1 Récupération de l'image Docker Hub
+### 5.1 Récupération de l'image Docker Hub
 
 Le serveur ne reçoit jamais le code source : il tire les images publiées par Jenkins.
 
@@ -515,7 +545,7 @@ docker logout
 
 Le token passe par l'entrée standard (`--password-stdin`), jamais en argument (il serait visible dans la liste des processus), et la session est fermée juste après le `pull`.
 
-## 5.2 Déploiement avec Docker Compose
+### 5.2 Déploiement avec Docker Compose
 
 **Fichier :** `deployment/docker-compose.yml`, modèle de variables : `deployment/.env.example`.
 
@@ -538,7 +568,7 @@ Le token passe par l'entrée standard (`--password-stdin`), jamais en argument (
 
 **Stratégie de migration :** `prisma migrate deploy` est idempotent (une migration déjà appliquée n'est pas rejouée) et ne fait qu'avancer. Les migrations doivent donc suivre le principe *expand / contract* (voir 5.4).
 
-## 5.3 Pipeline de déploiement GitLab CI/CD
+### 5.3 Pipeline de déploiement GitLab CI/CD
 
 **Fichier :** `.gitlab-ci.yml`. Le pipeline ne se lance **qu'à la main** (*Run pipeline*) : un push ne doit jamais déployer implicitement en production, et il ne fournirait pas le tag à déployer.
 
@@ -568,9 +598,9 @@ curl http://192.168.126.130:4000/v1/health
 {"success":true,"data":{"status":"UP","timestamp":"2026-11-10T13:13:40.526Z","uptime":64.62,"environment":"production"}}
 ```
 
-## 5.4 Vérification et procédure de rollback
+### 5.4 Vérification et procédure de rollback
 
-### Endpoints principaux et accès à la base
+#### Endpoints principaux et accès à la base
 
 La base étant vide et l'API sans route d'inscription, un compte administrateur est créé directement en base. Le mot de passe est haché avec le bcrypt de l'image de l'API, comme le fait l'application :
 
@@ -589,7 +619,7 @@ sudo docker exec souverainrecrut-db-1 psql -U souverainrecrut -d souverainrecrut
 | Contrôle d'accès | `GET /v1/jobs` sans jeton valide | `401 Token invalide ou expiré` | Les routes protégées refusent l'accès |
 | Route protégée | `GET /v1/jobs` avec le jeton | `200`, liste paginée (vide) | Jeton accepté, requête en base |
 
-### Persistance des données
+#### Persistance des données
 
 ```bash
 sudo -u deploy bash -c "cd /opt/souverainrecrut && docker compose restart && sleep 20 && docker compose ps"
@@ -601,7 +631,7 @@ sudo -u deploy bash -c "cd /opt/souverainrecrut && docker compose restart && sle
 
 La commande passe par `sudo -u deploy` : le répertoire `/opt/souverainrecrut` (`0750`) n'est accessible qu'à l'utilisateur de déploiement, pas au compte d'administration.
 
-### Rollback
+#### Rollback
 
 **Principe :** chaque image est immuable et identifiée par son tag. Revenir en arrière consiste à relancer l'API sur un tag antérieur déjà publié, **sans reconstruire**. À chaque déploiement, le serveur conserve `.previous_tag` (version remplacée) et `.current_tag` (version en place).
 
@@ -617,19 +647,21 @@ Le job `rollback_production` lit `.previous_tag`, met à jour `IMAGE_TAG` dans `
 | 4 | Job `rollback_production` | `/v1/info` → `"version":"1.0.0"` |
 | 5 | Login `admin@test.fr` | Toujours valide : les données sont conservées |
 
+**Avant la mise à jour (étape 1)** – la production sert la version 1.0.0 :
+
 ![Version 1.0.0 avant la mise à jour](captures/09-info-version-1.0.0.png)
 
-*Étape 1 : la production sert la version 1.0.0.*
+**Après le déploiement de `1.1.0-dbc9278` (étapes 2 et 3)** – Jenkins a publié la nouvelle image, GitLab l'a déployée après approbation, et l'API annonce la version 1.1.0 :
 
 ![Version 1.1.0 après le déploiement](captures/10-info-version-1.1.0.png)
 
-*Étape 3 : après le déploiement de `1.1.0-dbc9278`, l'API annonce la version 1.1.0.*
+**Rollback (étape 4)** – le job manuel `rollback_production` du même pipeline s'est terminé avec succès, vérifications comprises ; `/v1/info` renvoie de nouveau `"version":"1.0.0"` :
 
-![Exécution du rollback](captures/11-gitlab-rollback.png)
+![Rollback terminé](captures/11-gitlab-rollback.webp)
 
-*Étape 4 : `rollback_production` en cours, lancé manuellement dans le pipeline de déploiement. À la fin du job, l'API est revenue en 1.0.0 (capture 09) et les vérifications sont vertes.*
+*Les quatre jobs du pipeline sont verts : déploiement de la 1.1.0, vérification, puis retour à la 1.0.0 en 2 min 33 s au total, sans reconstruire d'image.*
 
-### Limite du rollback : la base de données
+#### Limite du rollback : la base de données
 
 Le rollback applicatif **ne défait pas les migrations** : `prisma migrate deploy` ne sait qu'avancer, et le job de rollback ne relance volontairement pas le service `migrate`. L'ancienne version de l'API tourne donc sur le schéma le plus récent. Pour que ce soit sans risque, les migrations suivent le principe *expand / contract* :
 
@@ -641,11 +673,11 @@ Le scénario testé (1.0.0 ↔ 1.1.0) ne contient aucune migration : le rollback
 
 ---
 
-# 6. Incidents rencontrés et résolution
+## 6. Incidents rencontrés et résolution
 
 Chaque incident a suivi la même démarche : observer le symptôme, lire les logs, isoler la cause, puis **automatiser la correction** lorsqu'elle concerne le serveur, pour que la reconstruction reste reproductible.
 
-## Incident 1 – Virtualisation imbriquée impossible
+### Incident 1 – Virtualisation imbriquée impossible
 
 | | |
 |---|---|
@@ -654,7 +686,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Tentatives** | Désactivation de la Plateforme d'ordinateur virtuel, de l'intégrité de la mémoire, `bcdedit /set hypervisorlaunchtype off`, désactivation de VBS par le registre : l'hyperviseur reste actif (VBS imposé par le firmware sur cette machine). |
 | **Résolution** | Abandon d'ESXi : VM Ubuntu directement dans Workstation (fonctionne au-dessus de Hyper-V), restauration de la configuration Windows d'origine. Conséquence : le provider Terraform vSphere n'est pas utilisable (4.2). |
 
-## Incident 2 – Terraform ne peut pas installer ses providers depuis WSL
+### Incident 2 – Terraform ne peut pas installer ses providers depuis WSL
 
 | | |
 |---|---|
@@ -662,7 +694,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Cause** | Le projet est sur le disque Windows, monté dans WSL sous `/mnt/c` sans métadonnées Linux : les droits Unix ne peuvent pas y être modifiés. Terraform en a besoin pour ses providers et pour écrire la clé privée en `0600` ; Ansible ignore aussi un `ansible.cfg` situé dans un répertoire modifiable par tous. |
 | **Résolution** | Activation des métadonnées dans `/etc/wsl.conf` (`[automount] options = "metadata,umask=22,fmask=11"`), puis `wsl --shutdown`. |
 
-## Incident 3 – Runner « Online » mais jobs bloqués en *pending* (DNS et NAT)
+### Incident 3 – Runner « Online » mais jobs bloqués en *pending* (DNS et NAT)
 
 | | |
 |---|---|
@@ -672,7 +704,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Cause** | Le service NAT de VMware se fige après une veille ou un changement de réseau de l'hôte ; son relais DNS est par ailleurs instable. |
 | **Résolution** | Redémarrage des services `VMware NAT Service` et `VMnetDHCP` sur l'hôte (correction immédiate), puis ajout dans Ansible de résolveurs DNS publics (`systemd-resolved`) pour ne plus dépendre du relais DNS de VMware. |
 
-## Incident 4 – Pipeline déclenché par un push
+### Incident 4 – Pipeline déclenché par un push
 
 | | |
 |---|---|
@@ -680,7 +712,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Cause** | Le pipeline se déclenchait aussi sur les push vers `main`, alors qu'aucun runner, variable ou tag n'était encore configuré. |
 | **Résolution** | Règle `workflow` limitée à `CI_PIPELINE_SOURCE == "web"` : le déploiement est toujours une décision explicite, jamais l'effet d'un push. |
 
-## Incident 5 – Disque plein pendant le déploiement
+### Incident 5 – Disque plein pendant le déploiement
 
 ![Échec du déploiement sur disque plein](captures/06-incident-disque-plein.png)
 
@@ -690,7 +722,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Cause** | `df -h /` : 14 Go dont 91 % utilisés. La partition racine (`/dev/sda4`) n'occupait qu'une partie du disque virtuel ; les mises à jour système, Docker et les images ont saturé l'espace. PostgreSQL n'a pas pu initialiser sa base. |
 | **Résolution** | Suppression du snapshot (obligatoire pour agrandir), disque virtuel porté à 60 Go dans VMware, puis `growpart /dev/sda 4` et `resize2fs /dev/sda4`. Ajout dans Ansible de l'agrandissement automatique de la racine, pour les deux cas rencontrés par l'installeur Ubuntu : LVM (`lvol` + `resizefs`) et partition simple (`growpart` + `resize2fs`). |
 
-## Incident 6 – Clé SSH abîmée par le copier-coller
+### Incident 6 – Clé SSH abîmée par le copier-coller
 
 | | |
 |---|---|
@@ -699,7 +731,7 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | **Résolution** | Le pipeline accepte désormais la clé encodée en **base64 sur une seule ligne** (`terraform output -raw deploy_private_key \| base64 -w0 \| clip.exe`), retire les `\r` et **valide la clé** (`ssh-keygen -y`) avant usage. En cas d'échec, il affiche un diagnostic (nombre de lignes, présence des en-têtes) sans jamais exposer son contenu. |
 | **Piège associé** | Le bouton *Retry* d'un job rejoue l'**ancien commit** : il faut lancer un nouveau pipeline (*Run pipeline*) pour profiter d'un correctif. |
 
-## Bilan
+### Bilan
 
 | Incident | Couche | Correction automatisée |
 |---|---|---|
@@ -709,3 +741,60 @@ Chaque incident a suivi la même démarche : observer le symptôme, lire les log
 | 4. Pipeline sur push | CI/CD | ✅ règle `workflow` |
 | 5. Disque plein | Serveur | ✅ agrandissement de la racine par Ansible |
 | 6. Clé SSH abîmée | CI/CD | ✅ base64, normalisation et validation dans le pipeline |
+
+---
+
+## 7. Du commit à la production
+
+Cheminement complet d'une modification, démontré avec la version 1.1.0 :
+
+1. **Commit** `dbc9278` sur `Dev` : la version passe à 1.1.0.
+2. **Jenkins** détecte le commit, installe les dépendances, exécute les 64 tests et contrôle la couverture.
+3. **SonarCloud** analyse le code ; le scanner attend le verdict du Quality Gate et échoue s'il est rouge.
+4. **Jenkins** compile, puis construit les deux images `1.1.0-dbc9278` (API et migrations).
+5. **Trivy** scanne les deux images ; une vulnérabilité HIGH ou CRITICAL corrigeable bloquerait la suite.
+6. **Docker Hub** reçoit les images, seulement si toutes les étapes précédentes sont vertes.
+7. **GitLab** : l'opérateur renseigne `IMAGE_TAG=1.1.0-dbc9278` et lance le pipeline ; `validate` vérifie le tag et la présence des images.
+8. **Approbation** : l'opérateur valide `deploy_production`.
+9. **Serveur** : le runner se connecte en SSH avec l'utilisateur `deploy`, transmet `docker-compose.yml` et `.env`, tire les images ; Compose démarre la base, applique les migrations, puis l'API.
+10. **Vérification** : `verify_production` contrôle l'état des conteneurs, le résultat des migrations, `/v1/health` et `/v1/ready`. `/v1/info` annonce 1.1.0.
+11. **Rollback** : `rollback_production` remet l'API en `1.0.0-fcc937f` sans reconstruire d'image ; les données sont intactes.
+
+À aucun moment le serveur ne reçoit le code source, et aucune commande n'est saisie à la main sur la production.
+
+## 8. Conformité aux exigences (§7)
+
+| Exigence | Attendu | Réalisation |
+|---|---|---|
+| Reproductibilité | Étapes décrites et rejouables | Jenkins configuré par code ; base Docker figée par digest et `npm ci` ; Terraform et Ansible idempotents (second passage `changed=0`) ; procédure de déploiement pas à pas |
+| Qualité logicielle | Tests exécutés, couverture et SonarQube consultables | 64 tests dans chaque build, seuil de couverture bloquant, Quality Gate bloquant, rapports JUnit et HTML publiés dans Jenkins et joints au rendu |
+| Sécurité | Secrets protégés, image analysée | Aucun secret versionné ; credentials Jenkins et variables GitLab masquées et protégées ; tokens Docker Hub distincts (écriture / lecture) ; image non root sans npm ; Trivy bloquant sur les deux images ; runner sans accès Docker ; base non exposée ; pare-feu |
+| Traçabilité | Tag explicite relié au code | Tag `<version>-<commit>` commun aux deux images, labels OCI `version` et `revision` ; le job de vérification affiche l'image en place |
+| Déploiement | Le serveur récupère l'image et l'API démarre avec PostgreSQL | Pull depuis Docker Hub, migrations puis API, `/v1/ready` vérifie l'accès à la base |
+| Continuité | Rollback documenté | Job `rollback_production`, deux procédures alternatives, scénario testé, limite des migrations expliquée |
+| Documentation | Choix, prérequis et procédures expliqués | Rapport détaillé, architecture, procédures de déploiement et de rollback, 6 incidents documentés |
+
+## 9. Choix techniques notables
+
+- **Une image de migrations séparée.** Le CLI Prisma est nécessaire pour migrer la base mais n'a rien à faire dans l'image exposée de l'API. Une seconde image, issue du même build et portant le même tag, applique `prisma migrate deploy` avant le démarrage de l'API.
+- **Le runner GitLab sur le serveur.** La VM est en NAT, injoignable depuis GitLab.com. Le runner interroge GitLab en sortie, sans port entrant. Il n'a aucun droit sur Docker et déploie en SSH avec l'utilisateur `deploy`.
+- **Un déploiement toujours explicite.** Le pipeline ne se déclenche qu'à la main et le déploiement exige une approbation : un push ne peut pas modifier la production.
+- **Des corrections automatisées.** Chaque problème rencontré sur le serveur (DNS, espace disque) a été corrigé dans Ansible plutôt qu'à la main, pour que la reconstruction reste fidèle.
+- **Un environnement adapté aux contraintes.** L'ESXi prévu pour Terraform vSphere n'a pas pu fonctionner sur la machine hôte ; Terraform a été recentré sur les ressources réellement disponibles (clé de déploiement, inventaire, contrôle SSH), comme le prévoit le cahier des charges.
+
+## 10. Limites et améliorations possibles
+
+| Limite actuelle | Amélioration envisagée |
+|---|---|
+| Un seul environnement (production) | Ajouter un environnement de pré-production, déployé automatiquement, avant l'approbation en production |
+| Jenkins local, déclenché par polling | Jenkins hébergé, déclenché par webhook GitHub |
+| VM Ubuntu 22.04 Desktop | Image Ubuntu 24.04 Server minimale, créée par Terraform sur un ESXi/vCenter |
+| Image de l'API de 690 Mo | Base distroless, revue des dépendances de production |
+| API en HTTP sur le port 4000 | Reverse proxy (Nginx ou Traefik) avec TLS |
+| Pas de sauvegarde automatique de la base | `pg_dump` planifié et externalisé, testé par restauration |
+| Rollback limité à la version précédente par le job | Liste des versions déployées et choix de la cible dans le job |
+| Pas de supervision | Collecte des métriques et des logs, alerte sur `/v1/health` |
+
+## 11. Conclusion
+
+Le projet couvre l'ensemble du cycle demandé : contrôle du code, qualité, conteneurisation, sécurité de la chaîne, provisionnement, déploiement et retour arrière. Au-delà d'une API fonctionnelle, la chaîne est **automatisée** (aucune intervention manuelle sur le serveur), **reproductible** (configuration entièrement versionnée et idempotente), **sécurisée** (secrets protégés, moindre privilège, contrôles bloquants), **traçable** (un tag relie chaque conteneur à un commit et à ses contrôles) et **documentée**.
