@@ -507,7 +507,7 @@ Le jeton n'est jamais écrit dans un fichier : il est passé en ligne de command
 
 *Le runner installé par Ansible apparaît en ligne dans le projet GitLab, avec le tag `souverainrecrut-prod` utilisé par les jobs. L'adresse affichée est l'adresse publique de sortie du réseau, pas celle de la VM.*
 
-**Validation :** `ansible-lint` profil `production` : 0 erreur, 0 avertissement.
+**Validation :** le rôle `docker_host` initial passait `ansible-lint` (profil `production`) sans erreur ni avertissement. Le playbook complet, avec le rôle `gitlab_runner` et les tâches disque et DNS ajoutées ensuite, a été validé par son exécution réelle : `failed=0` au premier passage, `changed=0` au second.
 
 ### 4.4 Préparation du projet GitLab
 
