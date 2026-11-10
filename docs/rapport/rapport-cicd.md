@@ -10,7 +10,10 @@ Projet fil rouge CI/CD – M2 Sup de Vinci Rennes. Périmètre : API Backend uni
 | 3.4 Mise en place de Jenkins | ✅ |
 | 3.5 Automatisation de la chaîne CI | ✅ |
 | 3.6 Image Docker / Docker Hub | ✅ |
-| 4. Provisionnement (Terraform, Ansible, GitLab) | ⏳ |
+| 4.1 VM Ubuntu sous VMware | ⏳ |
+| 4.2 Provisionnement Terraform | 🟡 code validé, `apply` à faire sur la VM |
+| 4.3 Configuration Ansible | 🟡 code validé, exécution à faire sur la VM |
+| 4.4 Projet GitLab | 🟡 projet créé, pipeline à écrire |
 | 5. Déploiement et validation | ⏳ |
 
 ---
@@ -301,3 +304,47 @@ souverainrecrut-backend   1.0.0-e6d91a9   b434cc4ef7d1   690MB
 L'identifiant `b434cc4ef7d1` correspond au digest des tags `1.0.0-e6d91a9` et `dev` publiés sur Docker Hub : l'image publiée est bien celle qui a été scannée.
 
 📸 *Capture à joindre : tags `1.0.0-e6d91a9` et `dev` sur la page Docker Hub du dépôt.*
+
+## 4. Provisionnement
+
+**Dépôt dédié :** [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement) (privé). Il ne contient que l'infrastructure et le déploiement : le code reste sur GitHub et l'image n'est jamais reconstruite côté GitLab.
+
+## 4.2 Provisionnement avec Terraform
+
+**Contrainte :** le provider vSphere exige ESXi/vCenter. Sous VMware Workstation, la VM est créée manuellement ; Terraform gère les ressources réellement disponibles.
+
+| Ressource | Rôle |
+|---|---|
+| `tls_private_key.deploy` | Paire de clés ED25519 dédiée au déploiement GitLab, distincte de la clé admin |
+| `local_sensitive_file` / `local_file` | Écriture de la clé dans `.secrets/` (droits `0600`) |
+| `local_file.ansible_inventory` | Inventaire Ansible généré depuis les variables (template `inventory.ini.tftpl`) |
+| `null_resource.ssh_check` | Vérification de l'accès SSH à la VM (`remote-exec`) |
+
+Fichiers : `providers.tf` (versions épinglées + `.terraform.lock.hcl`), `variables.tf` (IP validée), `main.tf`, `outputs.tf` (clé privée en `sensitive`).
+
+**Validation :** `terraform validate` OK, `terraform fmt -check` OK, `terraform plan` → 5 ressources à créer.
+
+**Sécurité :** l'état Terraform contient la clé privée : `*.tfstate`, `terraform.tfvars` et `.secrets/` sont exclus du dépôt.
+
+## 4.3 Configuration du serveur avec Ansible
+
+**Structure :** `playbook.yml` + rôle `docker_host`. Les valeurs par défaut du rôle ont la priorité la plus basse : l'inventaire généré par Terraform les surcharge.
+
+| Étape | Tâches |
+|---|---|
+| Contrôle | Refus si la cible n'est pas Ubuntu ≥ 22.04 |
+| Système | `apt update` + `dist-upgrade`, dépendances, redémarrage si `/var/run/reboot-required` |
+| Docker | Suppression des paquets non officiels, dépôt APT officiel Docker (clé GPG), Docker Engine + plugin Compose, rotation des logs (`10m × 3`), service activé et démarré |
+| Déploiement | Utilisateur `deploy` (groupe `docker`, clé publique Terraform uniquement), répertoire `/opt/souverainrecrut` (`0750`) |
+| Pare-feu | UFW : entrant refusé par défaut, SSH et port de l'API (4000) autorisés |
+| Vérification | Service Docker actif, versions Docker/Compose, `docker run hello-world` exécuté par `deploy` |
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i inventory.ini playbook.yml -K
+```
+
+**Validation :** `ansible-lint` profil `production` : 0 erreur, 0 avertissement. Le playbook est idempotent (second passage attendu : `changed=0`).
+
+📸 *Captures à joindre : `terraform apply`, récapitulatif `ansible-playbook` (1er passage puis 2e passage `changed=0`).*
+
