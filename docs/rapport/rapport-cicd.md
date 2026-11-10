@@ -10,6 +10,37 @@ Projet fil rouge CI/CD – M2 Sup de Vinci Rennes. Périmètre : API Backend uni
 | 3.4 Mise en place de Jenkins | ✅ |
 | 3.5 Automatisation de la chaîne CI | ✅ |
 | 3.6 Image Docker / Docker Hub | ✅ |
+| 4.1 VM Ubuntu sous VMware | ✅ |
+| 4.2 Provisionnement Terraform | ✅ |
+| 4.3 Configuration Ansible | ✅ |
+| 4.4 Projet GitLab | ✅ |
+| 5.1 – 5.3 Déploiement Docker Compose et pipeline GitLab | ✅ |
+| 5.4 Vérification et rollback | ✅ testé (1.1.0 → 1.0.0) |
+| 6. Incidents rencontrés | 6 incidents documentés |
+
+**Dépôts :**
+- Code et intégration continue : [`github.com/EAnathos/souverainrecrut`](https://github.com/EAnathos/souverainrecrut) (branche `Dev`)
+- Provisionnement et déploiement : [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement)
+
+**Chaîne complète :**
+
+```
+GitHub (Dev) ─► Jenkins ─► tests ─► SonarCloud ─► build ─► Trivy ─► Docker Hub
+                                                                       │ (images API + migrations, même tag)
+VMware (VM Ubuntu) ◄─ Terraform ◄─ Ansible                             │
+        │                                                              ▼
+        └── GitLab Runner ◄── GitLab CI : validate ─► deploy (approbation) ─► verify ─► rollback
+                 │
+                 └─► Docker Compose : PostgreSQL ─► migrations Prisma ─► API
+```
+
+---|---|
+| 3.1 Préparation du dépôt | ✅ |
+| 3.2 Tests Backend | ✅ |
+| 3.3 Analyse SonarQube | ✅ |
+| 3.4 Mise en place de Jenkins | ✅ |
+| 3.5 Automatisation de la chaîne CI | ✅ |
+| 3.6 Image Docker / Docker Hub | ✅ |
 | 4.1 VM Ubuntu sous VMware | ⏳ |
 | 4.2 Provisionnement Terraform | 🟡 code validé, `apply` à faire sur la VM |
 | 4.3 Configuration Ansible | 🟡 code validé, exécution à faire sur la VM |
@@ -305,9 +336,69 @@ L'identifiant `b434cc4ef7d1` correspond au digest des tags `1.0.0-e6d91a9` et `d
 
 📸 *Capture à joindre : tags `1.0.0-e6d91a9` et `dev` sur la page Docker Hub du dépôt.*
 
-## 4. Provisionnement
+### Évolution : image de migrations Prisma
 
-**Dépôt dédié :** [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement) (privé). Il ne contient que l'infrastructure et le déploiement : le code reste sur GitHub et l'image n'est jamais reconstruite côté GitLab.
+Le CLI Prisma est une dépendance de développement et npm est retiré de l'image de l'API (3.6) : l'image ne peut donc pas appliquer les migrations au déploiement. Plutôt que de réintroduire ces outils dans l'image exposée, le `Dockerfile` contient une étape dédiée `migrator` :
+
+| Image | Contenu | Commande |
+|---|---|---|
+| `souverainrecrut-backend:<tag>` | API seule (sans npm ni CLI Prisma) | `node dist/server.js` |
+| `souverainrecrut-backend-migrate:<tag>` | dépendances de production + CLI Prisma (version figée par `package-lock.json`) + `prisma/` | `prisma migrate deploy` |
+
+Jenkins construit les deux images à partir du **même commit**, les scanne avec les **mêmes seuils Trivy**, et les publie avec le **même tag** : la migration appliquée correspond toujours exactement au code déployé.
+
+### Résultat – build du commit `fcc937f`
+
+![Stage View Jenkins du build fcc937f](captures/01-jenkins-build-fcc937f.png)
+
+*Stage View : tous les stages sont verts, y compris le scan Trivy des deux images et leur publication. Tags publiés : `1.0.0-fcc937f` et `dev` pour `souverainrecrut-backend` et `souverainrecrut-backend-migrate`. C'est cette version qui est déployée en partie 5.*
+
+---
+
+# 4. Provisionnement
+
+**Dépôt dédié :** [`gitlab.com/eanathos1/souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement). Il ne contient que l'infrastructure et le déploiement : le code reste sur GitHub et **l'image n'est jamais reconstruite côté GitLab**.
+
+```
+souverainrecrut-deploiement/
+├── terraform/        clé de déploiement, inventaire Ansible, vérification SSH
+├── ansible/          préparation du serveur (rôles docker_host et gitlab_runner)
+├── deployment/       docker-compose.yml + .env.example
+├── .gitlab-ci.yml    validate → deploy (manuel) → verify → rollback
+└── documentation/    procédures de déploiement et de rollback
+```
+
+**Répartition des rôles entre les machines :**
+
+| Machine | Rôle | Outils |
+|---|---|---|
+| Poste de développement (Windows) | Fabrique et publie l'image | Docker Desktop, Jenkins |
+| Poste d'administration (WSL Ubuntu, sur le même PC) | Prépare le serveur, une seule fois | Terraform, Ansible |
+| VM de production (VMware) | Exécute l'application | Docker Compose, GitLab Runner |
+| GitLab.com | Pilote les déploiements | GitLab CI/CD |
+
+Aucune action manuelle n'est faite sur le serveur de production : tout y est installé par Ansible et tout y est déployé par GitLab CI.
+
+## 4.1 Préparation de l'environnement VMware
+
+**Choix de départ :** un ESXi virtualisé dans VMware Workstation, pour pouvoir utiliser le provider Terraform vSphere. Ce choix a été abandonné (voir [incident n°1](#incident-1--virtualisation-imbriquée-impossible)) : la machine hôte ne permet pas la virtualisation imbriquée.
+
+**Choix retenu :** une VM créée directement dans VMware Workstation.
+
+| Ressource | Demandé | Réalisé |
+|---|---|---|
+| Système | Ubuntu Server 24.04 LTS | Ubuntu 22.04 LTS (image Desktop disponible) |
+| Processeur | 2 vCPU | 2 vCPU |
+| Mémoire | 4 Go | 4 Go |
+| Stockage | 30 Go | 60 Go (agrandi, voir [incident n°5](#incident-5--disque-plein-pendant-le-déploiement)) |
+| Réseau | NAT ou Bridged | NAT (`192.168.126.130`) |
+| Administration | SSH | OpenSSH, authentification par clé depuis WSL |
+
+Le playbook Ansible accepte toute version d'Ubuntu ≥ 22.04 : la différence de version est sans effet sur la chaîne. L'image Desktop embarque des paquets inutiles sur un serveur (interface graphique, snaps) ; en production réelle, une image Server minimale est préférable.
+
+**Accès SSH :** une clé ED25519 est générée dans WSL et copiée sur la VM (`ssh-copy-id`). Toutes les opérations suivantes passent par cette clé, sans mot de passe SSH.
+
+**Snapshot :** un snapshot a été pris avant toute configuration. Il a ensuite dû être supprimé, car VMware refuse d'agrandir le disque d'une VM qui possède des snapshots. Il n'a pas été recréé : la VM est reconstructible à l'identique avec Terraform et Ansible, ce qui joue le même rôle.
 
 ## 4.2 Provisionnement avec Terraform
 
@@ -322,29 +413,299 @@ L'identifiant `b434cc4ef7d1` correspond au digest des tags `1.0.0-e6d91a9` et `d
 
 Fichiers : `providers.tf` (versions épinglées + `.terraform.lock.hcl`), `variables.tf` (IP validée), `main.tf`, `outputs.tf` (clé privée en `sensitive`).
 
-**Validation :** `terraform validate` OK, `terraform fmt -check` OK, `terraform plan` → 5 ressources à créer.
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # server_ip, admin_user
+terraform init && terraform validate && terraform plan && terraform apply
+```
 
-**Sécurité :** l'état Terraform contient la clé privée : `*.tfstate`, `terraform.tfvars` et `.secrets/` sont exclus du dépôt.
+![Résultat de terraform apply](captures/02-terraform-apply.png)
+
+*`terraform apply` : 5 ressources créées. La clé privée reste masquée (`<sensitive>`) ; seule la clé publique est affichée. L'inventaire Ansible est généré et l'étape suivante est indiquée.*
+
+**Sécurité :** l'état Terraform contient la clé privée : `*.tfstate`, `terraform.tfvars` et `.secrets/` sont exclus du dépôt. La clé privée n'en sort que vers la variable GitLab `SSH_PRIVATE_KEY`.
 
 ## 4.3 Configuration du serveur avec Ansible
 
-**Structure :** `playbook.yml` + rôle `docker_host`. Les valeurs par défaut du rôle ont la priorité la plus basse : l'inventaire généré par Terraform les surcharge.
+**Structure :** `playbook.yml` + deux rôles. Les valeurs par défaut des rôles ont la priorité la plus basse : l'inventaire généré par Terraform les surcharge.
+
+**Rôle `docker_host` :**
 
 | Étape | Tâches |
 |---|---|
 | Contrôle | Refus si la cible n'est pas Ubuntu ≥ 22.04 |
+| Disque | Agrandissement du volume racine à tout le disque : LVM (`lvol`) ou partition simple (`growpart` + `resize2fs`) |
+| DNS | Résolveurs publics (`1.1.1.1`, `8.8.8.8`) dans `systemd-resolved` |
 | Système | `apt update` + `dist-upgrade`, dépendances, redémarrage si `/var/run/reboot-required` |
 | Docker | Suppression des paquets non officiels, dépôt APT officiel Docker (clé GPG), Docker Engine + plugin Compose, rotation des logs (`10m × 3`), service activé et démarré |
-| Déploiement | Utilisateur `deploy` (groupe `docker`, clé publique Terraform uniquement), répertoire `/opt/souverainrecrut` (`0750`) |
+| Déploiement | Utilisateur `deploy` (groupe `docker`, clé publique Terraform uniquement), répertoire `/opt/souverainrecrut` (`0750`, propriétaire `deploy`) |
 | Pare-feu | UFW : entrant refusé par défaut, SSH et port de l'API (4000) autorisés |
 | Vérification | Service Docker actif, versions Docker/Compose, `docker run hello-world` exécuté par `deploy` |
 
+Les tâches *Disque* et *DNS* ont été ajoutées pendant la mise en œuvre, à la suite des incidents n°3 et n°5 : chaque correction a été automatisée plutôt qu'appliquée à la main.
+
+**Rôle `gitlab_runner` :**
+
+La VM est en NAT derrière le PC : GitLab.com ne peut pas l'atteindre, alors qu'un déploiement par SSH depuis un runner partagé l'exigerait. Le runner est donc **installé sur le serveur lui-même** ; il interroge GitLab en sortie (HTTPS), ce que le NAT autorise.
+
+| Tâche | Détail |
+|---|---|
+| Installation | Dépôt APT officiel GitLab Runner |
+| Enregistrement | `gitlab-runner register` avec le jeton `glrt-…`, uniquement s'il n'est pas déjà enregistré (idempotent), jeton masqué (`no_log`) |
+| Exécuteur | `shell`, utilisateur `gitlab-runner`, **sans accès Docker** |
+| Vérification | `gitlab-runner verify` |
+
+Le runner n'est pas membre du groupe `docker` (ce qui équivaudrait à un accès root) : il déploie en SSH avec l'utilisateur `deploy`, seul autorisé à piloter Docker.
+
 ```bash
+cd ansible
 ansible-galaxy collection install -r requirements.yml
-ansible-playbook -i inventory.ini playbook.yml -K
+ansible-playbook -i inventory.ini playbook.yml -K -e gitlab_runner_token=glrt-XXXX
 ```
 
-**Validation :** `ansible-lint` profil `production` : 0 erreur, 0 avertissement. Le playbook est idempotent (second passage attendu : `changed=0`).
+Le jeton n'est jamais écrit dans un fichier : il est passé en ligne de commande. Sans jeton, le rôle `gitlab_runner` est ignoré.
 
-📸 *Captures à joindre : `terraform apply`, récapitulatif `ansible-playbook` (1er passage puis 2e passage `changed=0`).*
+![Premier passage du playbook](captures/03-ansible-passage-1.png)
 
+*Premier passage : 32 tâches exécutées, 17 modifications, 0 échec.*
+
+![Second passage du playbook](captures/04-ansible-passage-2-idempotent.png)
+
+*Second passage : `changed=0`. Le playbook est idempotent : rejoué sur un serveur déjà configuré, il ne modifie rien. Les 2 tâches ignorées sont le redémarrage (inutile) et l'enregistrement du runner (déjà fait).*
+
+![Runner GitLab en ligne](captures/05-gitlab-runner-online.png)
+
+*Le runner installé par Ansible apparaît en ligne dans le projet GitLab, avec le tag `souverainrecrut-prod` utilisé par les jobs. L'adresse affichée est l'adresse publique de sortie du réseau, pas celle de la VM.*
+
+**Validation :** `ansible-lint` profil `production` : 0 erreur, 0 avertissement.
+
+## 4.4 Préparation du projet GitLab
+
+**Variables CI/CD** (*Settings > CI/CD > Variables*) :
+
+| Variable | Contenu | Type | Visibilité | Protégée |
+|---|---|---|---|---|
+| `DOCKERHUB_USER` | compte Docker Hub | Variable | Visible | non |
+| `DOCKERHUB_TOKEN` | token Docker Hub en **lecture seule** | Variable | Masked and hidden | oui |
+| `SSH_HOST` | `127.0.0.1` (le runner est sur le serveur) | Variable | Visible | non |
+| `SSH_USER` | `deploy` | Variable | Visible | non |
+| `SSH_PRIVATE_KEY` | clé de déploiement Terraform, encodée en base64 | File | Visible | oui |
+| `POSTGRES_PASSWORD` | `openssl rand -hex 32` | Variable | Masked and hidden | oui |
+| `JWT_SECRET` | `openssl rand -hex 32` | Variable | Masked and hidden | oui |
+| `IMAGE_TAG` | tag à déployer, ex. `1.0.0-fcc937f` | Variable | Visible | non |
+
+- **Masked and hidden** : valeur remplacée par `[MASKED]` dans les logs et illisible dans l'interface après création.
+- **Protégée** : transmise uniquement aux pipelines des branches protégées (`main`).
+- Le token Docker Hub de déploiement est **distinct** de celui de Jenkins et limité à la lecture : le serveur peut tirer les images, pas en publier.
+- La clé SSH est stockée en base64 sur une ligne (voir [incident n°6](#incident-6--clé-ssh-abîmée-par-le-copier-coller)).
+
+---
+
+# 5. Déploiement applicatif et validation
+
+## 5.1 Récupération de l'image Docker Hub
+
+Le serveur ne reçoit jamais le code source : il tire les images publiées par Jenkins.
+
+```bash
+echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
+docker compose pull
+docker logout
+```
+
+Le token passe par l'entrée standard (`--password-stdin`), jamais en argument (il serait visible dans la liste des processus), et la session est fermée juste après le `pull`.
+
+## 5.2 Déploiement avec Docker Compose
+
+**Fichier :** `deployment/docker-compose.yml`, modèle de variables : `deployment/.env.example`.
+
+| Service | Image | Rôle | Santé | Redémarrage |
+|---|---|---|---|---|
+| `db` | `postgres:17-alpine` | Base de données | `pg_isready` | `unless-stopped` |
+| `migrate` | `<compte>/souverainrecrut-backend-migrate:<tag>` | `prisma migrate deploy`, puis s'arrête | code de sortie | `no` |
+| `api` | `<compte>/souverainrecrut-backend:<tag>` | API REST | `GET /v1/health` | `unless-stopped` |
+
+**Ordre de démarrage garanti :** `db` *healthy* → `migrate` terminé avec succès (`service_completed_successfully`) → `api`. Si une migration échoue, l'API ne démarre pas sur un schéma incohérent.
+
+| Exigence | Réalisation |
+|---|---|
+| Image versionnée | Tag `<version>-<commit>` fourni par `IMAGE_TAG`, jamais `latest` |
+| Variables API et Prisma | `DATABASE_URL`, `JWT_SECRET`, `PORT`, `NODE_ENV` ; valeurs obligatoires contrôlées (`${VAR:?message}`) |
+| Volume persistant | `souverainrecrut_pgdata` monté sur `/var/lib/postgresql/data` |
+| Réseau | Réseau dédié `souverainrecrut_backend` ; **la base n'expose aucun port**, seule l'API publie le port 4000 |
+| Redémarrage et santé | `restart: unless-stopped` et `healthcheck` sur `db` et `api` |
+| Migrations maîtrisées | `migrate deploy` applique uniquement les migrations versionnées, sans jamais modifier ni réinitialiser la base |
+
+**Stratégie de migration :** `prisma migrate deploy` est idempotent (une migration déjà appliquée n'est pas rejouée) et ne fait qu'avancer. Les migrations doivent donc suivre le principe *expand / contract* (voir 5.4).
+
+## 5.3 Pipeline de déploiement GitLab CI/CD
+
+**Fichier :** `.gitlab-ci.yml`. Le pipeline ne se lance **qu'à la main** (*Run pipeline*) : un push ne doit jamais déployer implicitement en production, et il ne fournirait pas le tag à déployer.
+
+| Job | Déclenchement | Actions |
+|---|---|---|
+| `validate` | automatique | Format du tag (`^[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7}$`), présence des deux images sur Docker Hub, accès SSH et version de Docker |
+| `deploy_production` | **manuel (approbation)** | Génère `.env` (droits 600), mémorise la version en place dans `.previous_tag`, copie `docker-compose.yml` et `.env`, `pull`, `up -d`, puis supprime le `.env` du runner |
+| `verify_production` | automatique | Attend l'état `healthy` de l'API (150 s max), vérifie le code de sortie des migrations, `/v1/health`, `/v1/ready`, image en place |
+| `rollback_production` | manuel | Retour à la version de `.previous_tag` (voir 5.4) |
+
+**Sécurité du pipeline :**
+- `deploy_production` est en `when: manual` avec `allow_failure: false` : le pipeline reste bloqué tant que le déploiement n'est pas approuvé.
+- `resource_group: production` empêche deux déploiements simultanés.
+- La clé SSH est écrite dans un répertoire propre au job (`0700`), vérifiée (`ssh-keygen -y`) et supprimée en fin de job ; l'empreinte du serveur est contrôlée (`StrictHostKeyChecking=yes`).
+- Aucun secret n'apparaît dans les logs : variables masquées, `.env` jamais affiché, token Docker Hub via `--password-stdin`.
+
+![Pipeline de déploiement réussi](captures/07-gitlab-pipeline-deploiement.png)
+
+*Pipeline réussi : `validate` puis `deploy_production` (lancé après approbation, bouton ▶), puis `verify_production`. `rollback_production` reste en attente : c'est un job manuel, utilisé seulement en cas de besoin.*
+
+**Réponse de l'API depuis le poste de travail :**
+
+```bash
+curl http://192.168.126.130:4000/v1/health
+```
+```json
+{"success":true,"data":{"status":"UP","timestamp":"2026-11-10T13:13:40.526Z","uptime":64.62,"environment":"production"}}
+```
+
+## 5.4 Vérification et procédure de rollback
+
+### Endpoints principaux et accès à la base
+
+La base étant vide et l'API sans route d'inscription, un compte administrateur est créé directement en base. Le mot de passe est haché avec le bcrypt de l'image de l'API, comme le fait l'application :
+
+```bash
+HASH=$(sudo docker exec souverainrecrut-api-1 node -e "console.log(require('bcrypt').hashSync('Admin1234!',10))")
+sudo docker exec souverainrecrut-db-1 psql -U souverainrecrut -d souverainrecrut -c \
+  "INSERT INTO users (id,\"firstName\",\"lastName\",email,password,role,\"createdAt\",\"updatedAt\")
+   VALUES ('admin1','Admin','Test','admin@test.fr','$HASH','ADMIN',now(),now());"
+```
+
+| Test | Requête | Résultat | Ce que ça prouve |
+|---|---|---|---|
+| Santé | `GET /v1/health` | `200`, `status: UP` | L'API répond |
+| Disponibilité | `GET /v1/ready` | `200` | L'API joint PostgreSQL |
+| Authentification | `POST /v1/auth/login` | `200`, jeton JWT, mot de passe absent de la réponse | Lecture en base, bcrypt, signature JWT avec `JWT_SECRET` |
+| Contrôle d'accès | `GET /v1/jobs` sans jeton valide | `401 Token invalide ou expiré` | Les routes protégées refusent l'accès |
+| Route protégée | `GET /v1/jobs` avec le jeton | `200`, liste paginée (vide) | Jeton accepté, requête en base |
+
+### Persistance des données
+
+```bash
+sudo -u deploy bash -c "cd /opt/souverainrecrut && docker compose restart && sleep 20 && docker compose ps"
+```
+
+![Redémarrage des conteneurs](captures/08-persistance-redemarrage.png)
+
+*Après redémarrage, `api` et `db` sont `healthy` ; l'image en place est bien `1.0.0-fcc937f`. La base n'expose que le port interne `5432/tcp`, sans publication sur l'hôte. Le login de `admin@test.fr` fonctionne toujours : les données ont survécu au redémarrage grâce au volume `souverainrecrut_pgdata`.*
+
+La commande passe par `sudo -u deploy` : le répertoire `/opt/souverainrecrut` (`0750`) n'est accessible qu'à l'utilisateur de déploiement, pas au compte d'administration.
+
+### Rollback
+
+**Principe :** chaque image est immuable et identifiée par son tag. Revenir en arrière consiste à relancer l'API sur un tag antérieur déjà publié, **sans reconstruire**. À chaque déploiement, le serveur conserve `.previous_tag` (version remplacée) et `.current_tag` (version en place).
+
+Le job `rollback_production` lit `.previous_tag`, met à jour `IMAGE_TAG` dans `.env`, tire l'image et recrée **uniquement le conteneur `api`** (`up -d --no-deps api`), puis rejoue toutes les vérifications. Deux alternatives sont documentées dans `documentation/procedure-rollback.md` : relancer le pipeline avec un tag précis, ou la procédure manuelle de secours sur le serveur.
+
+**Scénario de test :**
+
+| Étape | Action | Résultat |
+|---|---|---|
+| 1 | Version en place : `1.0.0-fcc937f` | `/v1/info` → `"version":"1.0.0"` |
+| 2 | Commit `dbc9278` sur `Dev` : version 1.1.0 (`package.json` et `/v1/info`) | Jenkins publie `1.1.0-dbc9278` (64 tests OK) |
+| 3 | Pipeline GitLab avec `IMAGE_TAG=1.1.0-dbc9278`, approbation | `/v1/info` → `"version":"1.1.0"`, `.previous_tag` = `1.0.0-fcc937f` |
+| 4 | Job `rollback_production` | `/v1/info` → `"version":"1.0.0"` |
+| 5 | Login `admin@test.fr` | Toujours valide : les données sont conservées |
+
+![Version 1.0.0 avant la mise à jour](captures/09-info-version-1.0.0.png)
+
+*Étape 1 : la production sert la version 1.0.0.*
+
+![Version 1.1.0 après le déploiement](captures/10-info-version-1.1.0.png)
+
+*Étape 3 : après le déploiement de `1.1.0-dbc9278`, l'API annonce la version 1.1.0.*
+
+![Exécution du rollback](captures/11-gitlab-rollback.png)
+
+*Étape 4 : `rollback_production` en cours, lancé manuellement dans le pipeline de déploiement. À la fin du job, l'API est revenue en 1.0.0 (capture 09) et les vérifications sont vertes.*
+
+### Limite du rollback : la base de données
+
+Le rollback applicatif **ne défait pas les migrations** : `prisma migrate deploy` ne sait qu'avancer, et le job de rollback ne relance volontairement pas le service `migrate`. L'ancienne version de l'API tourne donc sur le schéma le plus récent. Pour que ce soit sans risque, les migrations suivent le principe *expand / contract* :
+
+- une migration **ajoute** (table, colonne nullable ou avec valeur par défaut) ; elle ne supprime ni ne renomme dans la même version que le code qui en dépend ;
+- une colonne n'est supprimée qu'**une version après** que le code a cessé de l'utiliser ;
+- avant une migration destructive, la base est sauvegardée (`pg_dump`, commande dans `procedure-rollback.md`).
+
+Le scénario testé (1.0.0 ↔ 1.1.0) ne contient aucune migration : le rollback est donc sans effet sur le schéma.
+
+---
+
+# 6. Incidents rencontrés et résolution
+
+Chaque incident a suivi la même démarche : observer le symptôme, lire les logs, isoler la cause, puis **automatiser la correction** lorsqu'elle concerne le serveur, pour que la reconstruction reste reproductible.
+
+## Incident 1 – Virtualisation imbriquée impossible
+
+| | |
+|---|---|
+| **Symptôme** | La VM Ubuntu hébergée dans ESXi (lui-même virtualisé dans VMware Workstation) refuse de démarrer : *« Cet hôte ne prend pas en charge la technologie AMD-V »*, *« VHV est désactivé »*. |
+| **Diagnostic** | AMD-V est bien activé dans le BIOS (`VirtualizationFirmwareEnabled : True`), mais Windows 11 exécute son propre hyperviseur (`HypervisorPresent : True`) pour la *Virtualization-Based Security*. Workstation fonctionne alors au-dessus de Hyper-V, qui ne lui transmet pas la virtualisation imbriquée nécessaire à ESXi. |
+| **Tentatives** | Désactivation de la Plateforme d'ordinateur virtuel, de l'intégrité de la mémoire, `bcdedit /set hypervisorlaunchtype off`, désactivation de VBS par le registre : l'hyperviseur reste actif (VBS imposé par le firmware sur cette machine). |
+| **Résolution** | Abandon d'ESXi : VM Ubuntu directement dans Workstation (fonctionne au-dessus de Hyper-V), restauration de la configuration Windows d'origine. Conséquence : le provider Terraform vSphere n'est pas utilisable (4.2). |
+
+## Incident 2 – Terraform ne peut pas installer ses providers depuis WSL
+
+| | |
+|---|---|
+| **Symptôme** | `terraform init` : *« chmod … LICENSE.txt: operation not permitted »*. |
+| **Cause** | Le projet est sur le disque Windows, monté dans WSL sous `/mnt/c` sans métadonnées Linux : les droits Unix ne peuvent pas y être modifiés. Terraform en a besoin pour ses providers et pour écrire la clé privée en `0600` ; Ansible ignore aussi un `ansible.cfg` situé dans un répertoire modifiable par tous. |
+| **Résolution** | Activation des métadonnées dans `/etc/wsl.conf` (`[automount] options = "metadata,umask=22,fmask=11"`), puis `wsl --shutdown`. |
+
+## Incident 3 – Runner « Online » mais jobs bloqués en *pending* (DNS et NAT)
+
+| | |
+|---|---|
+| **Symptôme** | Le job `validate` reste en *pending*, alors que GitLab affiche le runner *Online*. |
+| **Diagnostic 1** | Logs du runner (`journalctl -u gitlab-runner`) : *« lookup gitlab.com on 127.0.0.53:53: server misbehaving »*. La VM ne résout plus les noms de domaine. |
+| **Diagnostic 2** | Pendant le playbook, `apt` reste bloqué. `ping 1.1.1.1` → *Destination Host Unreachable* : la VM ne joint même plus sa passerelle NAT. Le service « VMware NAT Service » apparaît pourtant démarré sur l'hôte. |
+| **Cause** | Le service NAT de VMware se fige après une veille ou un changement de réseau de l'hôte ; son relais DNS est par ailleurs instable. |
+| **Résolution** | Redémarrage des services `VMware NAT Service` et `VMnetDHCP` sur l'hôte (correction immédiate), puis ajout dans Ansible de résolveurs DNS publics (`systemd-resolved`) pour ne plus dépendre du relais DNS de VMware. |
+
+## Incident 4 – Pipeline déclenché par un push
+
+| | |
+|---|---|
+| **Symptôme** | Le premier push sur le dépôt GitLab crée un pipeline immédiatement en échec. |
+| **Cause** | Le pipeline se déclenchait aussi sur les push vers `main`, alors qu'aucun runner, variable ou tag n'était encore configuré. |
+| **Résolution** | Règle `workflow` limitée à `CI_PIPELINE_SOURCE == "web"` : le déploiement est toujours une décision explicite, jamais l'effet d'un push. |
+
+## Incident 5 – Disque plein pendant le déploiement
+
+![Échec du déploiement sur disque plein](captures/06-incident-disque-plein.png)
+
+| | |
+|---|---|
+| **Symptôme** | `deploy_production` échoue : *« container souverainrecrut-db-1 is unhealthy »*, l'API et les migrations ne démarrent pas, puis *« No space left on device »*. |
+| **Cause** | `df -h /` : 14 Go dont 91 % utilisés. La partition racine (`/dev/sda4`) n'occupait qu'une partie du disque virtuel ; les mises à jour système, Docker et les images ont saturé l'espace. PostgreSQL n'a pas pu initialiser sa base. |
+| **Résolution** | Suppression du snapshot (obligatoire pour agrandir), disque virtuel porté à 60 Go dans VMware, puis `growpart /dev/sda 4` et `resize2fs /dev/sda4`. Ajout dans Ansible de l'agrandissement automatique de la racine, pour les deux cas rencontrés par l'installeur Ubuntu : LVM (`lvol` + `resizefs`) et partition simple (`growpart` + `resize2fs`). |
+
+## Incident 6 – Clé SSH abîmée par le copier-coller
+
+| | |
+|---|---|
+| **Symptôme** | `validate` : *« Load key …: error in libcrypto »* puis *« Permission denied (publickey) »*. |
+| **Cause** | La clé privée, copiée depuis le terminal WSL vers l'interface GitLab, arrivait altérée (retours à la ligne, caractères de fin de ligne Windows, sélection incomplète). Le refus SSH n'était qu'une conséquence de la clé illisible. |
+| **Résolution** | Le pipeline accepte désormais la clé encodée en **base64 sur une seule ligne** (`terraform output -raw deploy_private_key \| base64 -w0 \| clip.exe`), retire les `\r` et **valide la clé** (`ssh-keygen -y`) avant usage. En cas d'échec, il affiche un diagnostic (nombre de lignes, présence des en-têtes) sans jamais exposer son contenu. |
+| **Piège associé** | Le bouton *Retry* d'un job rejoue l'**ancien commit** : il faut lancer un nouveau pipeline (*Run pipeline*) pour profiter d'un correctif. |
+
+## Bilan
+
+| Incident | Couche | Correction automatisée |
+|---|---|---|
+| 1. Virtualisation imbriquée | Poste hôte | — (changement d'architecture) |
+| 2. `chmod` sur `/mnt/c` | Poste d'administration | — (configuration WSL, une fois) |
+| 3. DNS / NAT VMware | Réseau | ✅ DNS publics par Ansible |
+| 4. Pipeline sur push | CI/CD | ✅ règle `workflow` |
+| 5. Disque plein | Serveur | ✅ agrandissement de la racine par Ansible |
+| 6. Clé SSH abîmée | CI/CD | ✅ base64, normalisation et validation dans le pipeline |
