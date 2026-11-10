@@ -1,0 +1,12 @@
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+credentials-binding
+nodejs
+sonar
+htmlpublisher
+junit
+ws-cleanup
+timestamper

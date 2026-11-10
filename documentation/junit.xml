@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="64" failures="0" errors="0" time="1.4866406">
+    <testsuite name="tests/access-control.test.ts" timestamp="2026-11-10T13:55:09.275Z" hostname="Evan" tests="11" failures="0" errors="0" skipped="0" time="0.1805013">
+        <testcase classname="tests/access-control.test.ts" name="Authentification (authMiddleware) &gt; refuse une requête sans en-tête Authorization (401)" time="0.0718195">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Authentification (authMiddleware) &gt; refuse un schéma autre que Bearer (401)" time="0.0135394">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Authentification (authMiddleware) &gt; refuse un token signé avec une autre clé (401)" time="0.0158791">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Authentification (authMiddleware) &gt; refuse un token expiré (401)" time="0.0106852">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER ne peut pas faire DELETE /v1/candidates/c1 (403)" time="0.0110683">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER ne peut pas faire DELETE /v1/jobs/j1 (403)" time="0.0089005">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER ne peut pas faire DELETE /v1/applications/a1 (403)" time="0.008665">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER ne peut pas faire GET /v1/users (403)" time="0.0089156">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER ne peut pas faire POST /v1/users (403)" time="0.0089133">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un RECRUITER peut consulter les candidats" time="0.0109391">
+        </testcase>
+        <testcase classname="tests/access-control.test.ts" name="Autorisation par rôle (authorize) &gt; un ADMIN peut consulter les utilisateurs" time="0.0075763">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/applications.test.ts" timestamp="2026-11-10T13:55:09.281Z" hostname="Evan" tests="8" failures="0" errors="0" skipped="0" time="0.1729917">
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; GET /applications retourne une liste paginée" time="0.0749282">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; GET /applications/:id retourne la candidature" time="0.0147787">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; GET /applications/:id retourne 404 si inconnue" time="0.0112586">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; POST /applications crée une candidature" time="0.0376406">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; POST /applications refuse un statut inconnu (400)" time="0.009428">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; PUT /applications/:id change le statut" time="0.0097448">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; DELETE /applications/:id supprime la candidature (ADMIN)" time="0.0080458">
+        </testcase>
+        <testcase classname="tests/applications.test.ts" name="Candidatures &gt; ApplicationService.updateStatus met à jour uniquement le statut" time="0.0035456">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/auth.test.ts" timestamp="2026-11-10T13:55:09.285Z" hostname="Evan" tests="5" failures="0" errors="0" skipped="0" time="0.1705816">
+        <testcase classname="tests/auth.test.ts" name="POST /v1/auth/login &gt; retourne un token JWT et l&apos;utilisateur sans mot de passe" time="0.1227463">
+        </testcase>
+        <testcase classname="tests/auth.test.ts" name="POST /v1/auth/login &gt; refuse un email inconnu (401)" time="0.0117273">
+        </testcase>
+        <testcase classname="tests/auth.test.ts" name="POST /v1/auth/login &gt; refuse un mauvais mot de passe (401)" time="0.0115993">
+        </testcase>
+        <testcase classname="tests/auth.test.ts" name="GET /v1/auth/me &gt; retourne le profil de l&apos;utilisateur connecté" time="0.0122135">
+        </testcase>
+        <testcase classname="tests/auth.test.ts" name="GET /v1/auth/me &gt; retourne 404 si l&apos;utilisateur n&apos;existe plus" time="0.0088168">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/candidates.test.ts" timestamp="2026-11-10T13:55:09.288Z" hostname="Evan" tests="9" failures="0" errors="0" skipped="0" time="0.208223">
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; GET /candidates retourne une liste paginée" time="0.093484">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; GET /candidates/:id retourne le candidat" time="0.0163267">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; GET /candidates/:id retourne 404 si inconnu" time="0.012868">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; POST /candidates crée un candidat (email normalisé)" time="0.036384">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; POST /candidates refuse un email déjà utilisé (409)" time="0.0088888">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; POST /candidates refuse des données invalides (400)" time="0.0113431">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; PUT /candidates/:id met à jour le candidat" time="0.0082106">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; PUT /candidates/:id retourne 404 si inconnu" time="0.0065753">
+        </testcase>
+        <testcase classname="tests/candidates.test.ts" name="Candidats &gt; DELETE /candidates/:id supprime le candidat (ADMIN)" time="0.0094752">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/jobs.test.ts" timestamp="2026-11-10T13:55:09.291Z" hostname="Evan" tests="8" failures="0" errors="0" skipped="0" time="0.1774801">
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; GET /jobs retourne une liste paginée (valeurs par défaut)" time="0.0752524">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; GET /jobs/:id retourne l&apos;offre" time="0.0143101">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; GET /jobs/:id retourne 404 si inconnue" time="0.0146596">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; POST /jobs crée une offre" time="0.0332183">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; POST /jobs refuse une description trop courte (400)" time="0.009746">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; PUT /jobs/:id met à jour l&apos;offre" time="0.010051">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; DELETE /jobs/:id supprime l&apos;offre (ADMIN)" time="0.0081675">
+        </testcase>
+        <testcase classname="tests/jobs.test.ts" name="Offres d&apos;emploi &gt; DELETE /jobs/:id retourne 404 si inconnue" time="0.008744">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/system.test.ts" timestamp="2026-11-10T13:55:09.295Z" hostname="Evan" tests="9" failures="0" errors="0" skipped="0" time="0.1689171">
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET / retourne le message d&apos;accueil" time="0.0691143">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; n&apos;expose pas l&apos;en-tête X-Powered-By" time="0.014498">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET /v1/health retourne UP" time="0.0127333">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET /v1/ready retourne 200 quand la base répond" time="0.010865">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET /v1/ready retourne 503 quand la base est indisponible" time="0.0098394">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET /v1/info retourne les informations de l&apos;API" time="0.0114737">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; GET /v1/dashboard/stats retourne les statistiques" time="0.0168152">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; retourne 404 pour une route inconnue" time="0.0085245">
+        </testcase>
+        <testcase classname="tests/system.test.ts" name="Routes système &gt; retourne 500 sans détail technique sur une erreur inattendue" time="0.0115245">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit.test.ts" timestamp="2026-11-10T13:55:09.300Z" hostname="Evan" tests="6" failures="0" errors="0" skipped="0" time="0.0227418">
+        <testcase classname="tests/unit.test.ts" name="getPagination &gt; applique les valeurs par défaut" time="0.0128864">
+        </testcase>
+        <testcase classname="tests/unit.test.ts" name="getPagination &gt; calcule le décalage" time="0.0008374">
+        </testcase>
+        <testcase classname="tests/unit.test.ts" name="getPagination &gt; borne la page à 1 et la limite entre 1 et 100" time="0.0008119">
+        </testcase>
+        <testcase classname="tests/unit.test.ts" name="buildPaginationMeta &gt; arrondit le nombre de pages au supérieur" time="0.0006212">
+        </testcase>
+        <testcase classname="tests/unit.test.ts" name="authorize &gt; retourne 401 si aucun utilisateur n&apos;est attaché à la requête" time="0.0028361">
+        </testcase>
+        <testcase classname="tests/unit.test.ts" name="AppError &gt; utilise 500 par défaut" time="0.0008014">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/users.test.ts" timestamp="2026-11-10T13:55:09.303Z" hostname="Evan" tests="8" failures="0" errors="0" skipped="0" time="0.385204">
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; GET /users retourne une liste paginée" time="0.0902">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; GET /users/:id retourne l&apos;utilisateur" time="0.0144884">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; GET /users/:id retourne 404 si inconnu" time="0.0100818">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; POST /users hache le mot de passe avant enregistrement" time="0.2328404">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; POST /users refuse un email déjà utilisé (409)" time="0.0084349">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; POST /users refuse un mot de passe trop court (400)" time="0.0080627">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; PUT /users/:id met à jour l&apos;utilisateur" time="0.0088581">
+        </testcase>
+        <testcase classname="tests/users.test.ts" name="Utilisateurs (ADMIN) &gt; DELETE /users/:id supprime l&apos;utilisateur" time="0.0076099">
+        </testcase>
+    </testsuite>
+</testsuites>

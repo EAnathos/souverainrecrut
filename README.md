@@ -13,6 +13,11 @@ Elle permet de :
 
 Ce projet est utilisé comme **projet fil rouge** des cours  DevOps.
 
+> **Projet CI/CD – Evan Jeuland / Nathaël Martinelle**
+>
+> Livrables dans [`documentation/`](documentation) : [rapport final](documentation/rapport-final.md), [architecture](documentation/architecture.md), [procédure de déploiement](documentation/procedure-deploiement.md), [procédure de rollback](documentation/procedure-rollback.md) et [captures](documentation/captures).
+> Le provisionnement et le déploiement sont dans le dépôt GitLab [`souverainrecrut-deploiement`](https://gitlab.com/eanathos1/souverainrecrut-deploiement).
+
 ---
 
 ## Architecture

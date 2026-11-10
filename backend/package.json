@@ -1,6 +1,6 @@
 {
   "name": "souverainrecrut-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "API REST de la plateforme SouverainRecrut développée avec Node.js, Express, TypeScript et Prisma.",
   "author": "Bootcamp DevOps Conakry 2026",
   "license": "MIT",
@@ -26,6 +26,9 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
+  },
   "keywords": [
     "devops",
     "express",
@@ -35,7 +38,7 @@
     "rest-api"
   ],
   "dependencies": {
-    "@prisma/client": "^6.16.2",
+    "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
