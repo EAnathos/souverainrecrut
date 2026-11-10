@@ -7,7 +7,7 @@ export class InfoService {
   getInfo() {
     return {
       name: "SouverainRecrut API",
-      version: "1.0.0",
+      version: "1.1.0",
       environment: env.nodeEnv,
       apiVersion: env.apiVersion,
       documentation: "/api-docs",

@@ -1,6 +1,6 @@
 {
   "name": "souverainrecrut-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "API REST de la plateforme SouverainRecrut développée avec Node.js, Express, TypeScript et Prisma.",
   "author": "Bootcamp DevOps Conakry 2026",
   "license": "MIT",
